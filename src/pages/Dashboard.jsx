@@ -1,0 +1,235 @@
+import { useState, useEffect } from "react";
+import { instancesApi } from "@/components/utils/neonClient";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
+
+import { startZillizInstanceJob } from "@/functions/startZillizInstanceJob";
+import { executeZillizInstance } from "@/functions/executeZillizInstance";
+import { useToast } from "@/components/ui/use-toast";
+
+import StatsOverview from "../components/dashboard/StatsOverview";
+import InstanceCard from "../components/dashboard/InstanceCard";
+import CreateInstanceDialog from "../components/dashboard/CreateInstanceDialog";
+import DryRunResultDialog from "../components/dashboard/DryRunResultDialog";
+
+
+export default function Dashboard() {
+  const [instances, setInstances] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [editingInstance, setEditingInstance] = useState(null);
+  
+  const [isDryRunLoading, setIsDryRunLoading] = useState(false);
+  const [dryRunResults, setDryRunResults] = useState(null);
+  const [dryRunError, setDryRunError] = useState(null);
+  const [isDryRunOpen, setIsDryRunOpen] = useState(false);
+
+  const { toast } = useToast();
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      const instancesData = await instancesApi.list();
+      setInstances(instancesData);
+    } catch (error) {
+      console.error("Error loading data:", error);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+    setIsLoading(false);
+  };
+
+  const handleCreateInstance = () => {
+    setEditingInstance(null);
+    setShowCreateDialog(true);
+  };
+
+  const handleEditInstance = (instance) => {
+    setEditingInstance(instance);
+    setShowCreateDialog(true);
+  };
+
+  const handleSaveInstance = async (instanceData) => {
+    try {
+      if (editingInstance) {
+        await instancesApi.update(editingInstance.id, instanceData);
+      } else {
+        await instancesApi.create(instanceData);
+      }
+      setShowCreateDialog(false);
+      setEditingInstance(null);
+      loadData();
+      toast({
+        title: "Success",
+        description: editingInstance ? "Instance updated" : "Instance created",
+      });
+    } catch (error) {
+      console.error("Error saving instance:", error);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleToggleStatus = async (instance) => {
+    try {
+      const newStatus = instance.status === 'active' ? 'paused' : 'active';
+      await instancesApi.update(instance.id, { status: newStatus });
+      loadData();
+    } catch (error) {
+      console.error("Error updating status:", error);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleExecute = async (instance, isDryRun) => {
+    if (isDryRun) {
+      setIsDryRunLoading(true);
+      setDryRunError(null);
+      setDryRunResults(null);
+      setIsDryRunOpen(true);
+      try {
+        const { data, error } = await executeZillizInstance({ instance_id: instance.id });
+        if (error) throw new Error(error.message);
+        setDryRunResults(data.sample_results);
+      } catch (e) {
+        setDryRunError(e.message);
+      } finally {
+        setIsDryRunLoading(false);
+      }
+    } else {
+      try {
+          const { data, error } = await startZillizInstanceJob({ instance_id: instance.id });
+          if (error) throw new Error(error.message);
+          toast({
+              title: "Job Started Successfully!",
+              description: `Started processing job for "${instance.name}". View progress on the Jobs page.`,
+          });
+      } catch (e) {
+          console.error("Failed to start job:", e);
+          toast({
+              title: "Error Starting Job",
+              description: e.message,
+              variant: "destructive",
+          });
+      }
+    }
+  };
+
+  const handleDeleteInstance = async (instance) => {
+    if (window.confirm(`Are you sure you want to delete "${instance.name}"?`)) {
+      try {
+        await instancesApi.delete(instance.id);
+        loadData();
+        toast({
+          title: "Success",
+          description: "Instance deleted",
+        });
+      } catch (error) {
+        console.error("Error deleting instance:", error);
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 p-6">
+      <div className="max-w-7xl mx-auto space-y-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+          <div>
+            <h1 className="text-4xl font-bold text-slate-900 mb-2">Database Instances</h1>
+            <p className="text-slate-600 text-lg">Manage your Zilliz AI data pipelines</p>
+          </div>
+          <Button 
+            onClick={handleCreateInstance}
+            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            New Instance
+          </Button>
+        </div>
+
+        <StatsOverview instances={instances} isLoading={isLoading} />
+
+        <div className="space-y-6">
+          <h2 className="text-2xl font-bold text-slate-900">Your Instances</h2>
+          
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="bg-white/50 rounded-2xl p-6 animate-pulse">
+                  <div className="h-6 bg-slate-200 rounded mb-4"></div>
+                  <div className="h-4 bg-slate-200 rounded mb-2"></div>
+                  <div className="h-4 bg-slate-200 rounded w-2/3"></div>
+                </div>
+              ))}
+            </div>
+          ) : instances.length === 0 ? (
+            <div className="text-center py-16 bg-white/30 backdrop-blur-sm rounded-2xl border border-slate-200/50">
+              <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <Plus className="w-10 h-10 text-blue-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-slate-900 mb-2">No instances yet</h3>
+              <p className="text-slate-600 mb-6">Create your first database instance to get started with AI data processing</p>
+              <Button 
+                onClick={handleCreateInstance}
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Create First Instance
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <AnimatePresence>
+                {instances.map((instance) => (
+                  <InstanceCard
+                    key={instance.id}
+                    instance={instance}
+                    onToggleStatus={() => handleToggleStatus(instance)}
+                    onExecute={(isDryRun) => handleExecute(instance, isDryRun)}
+                    onEdit={() => handleEditInstance(instance)}
+                    onDelete={() => handleDeleteInstance(instance)}
+                    isDryRunLoading={isDryRunLoading}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
+        </div>
+
+        <CreateInstanceDialog
+          open={showCreateDialog}
+          onOpenChange={setShowCreateDialog}
+          onSave={handleSaveInstance}
+          initialData={editingInstance}
+        />
+        <DryRunResultDialog
+          open={isDryRunOpen}
+          onOpenChange={setIsDryRunOpen}
+          results={dryRunResults}
+          error={dryRunError}
+          isLoading={isDryRunLoading}
+        />
+      </div>
+    </div>
+  );
+}

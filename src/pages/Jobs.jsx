@@ -1,14 +1,14 @@
-
 import React, { useState, useEffect, useCallback } from "react";
 import { jobsApi, instancesApi } from "@/components/utils/neonClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { Activity, CheckCircle, XCircle, Clock, Ban, RefreshCw, AlertTriangle, ChevronDown } from "lucide-react";
+import { Activity, CheckCircle, XCircle, Clock, Ban, RefreshCw, AlertTriangle, ChevronDown, LogIn } from "lucide-react";
 import { format, formatDistanceToNow, parseISO } from "date-fns";
 import { useToast } from "@/components/ui/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { base44 } from "@/api/base44Client";
 
 import { cancelJob } from "@/functions/cancelJob";
 import LogViewer from '../components/jobs/LogViewer';
@@ -20,7 +20,28 @@ export default function JobsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandedJobs, setExpandedJobs] = useState(new Set());
+  const [isAuthenticated, setIsAuthenticated] = useState(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const checkAuth = async () => {
+    try {
+      const authenticated = await base44.auth.isAuthenticated();
+      setIsAuthenticated(authenticated);
+      if (authenticated) {
+        loadData();
+      } else {
+        setIsLoading(false);
+      }
+    } catch (error) {
+      console.error("Auth check error:", error);
+      setIsAuthenticated(false);
+      setIsLoading(false);
+    }
+  };
 
   const loadData = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh || isLoading) {
@@ -37,22 +58,32 @@ export default function JobsPage() {
       setInstances(instancesData);
     } catch (error) {
       console.error("Error loading jobs:", error);
-      setError(error.message || "Failed to load jobs. Please refresh the page.");
-      toast({
-        title: "Error Loading Jobs",
-        description: error.message || "Failed to load jobs",
-        variant: "destructive",
-      });
+      if (error.message.includes("logged in")) {
+        setIsAuthenticated(false);
+      } else {
+        setError(error.message || "Failed to load jobs. Please refresh the page.");
+        toast({
+          title: "Error Loading Jobs",
+          description: error.message || "Failed to load jobs",
+          variant: "destructive",
+        });
+      }
     } finally {
         setIsLoading(false);
     }
   }, [isLoading, toast]);
 
   useEffect(() => {
-    loadData();
-    const interval = setInterval(() => loadData(false), 5000);
-    return () => clearInterval(interval);
-  }, [loadData]);
+    if (isAuthenticated) {
+      loadData();
+      const interval = setInterval(() => loadData(false), 5000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated, loadData]);
+
+  const handleLogin = () => {
+    base44.auth.redirectToLogin();
+  };
   
   const getInstanceName = (instanceId) => instances.find(i => i.id === instanceId)?.name || 'Unknown';
 
@@ -100,6 +131,27 @@ export default function JobsPage() {
 
   const renderJobDetails = (job) => {
     return <LogViewer jobId={job.id} />;
+  }
+
+  if (isAuthenticated === false) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl p-8 text-center">
+          <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <LogIn className="w-8 h-8 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Authentication Required</h2>
+          <p className="text-slate-600 mb-6">Please log in to view jobs.</p>
+          <Button 
+            onClick={handleLogin}
+            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+          >
+            <LogIn className="w-5 h-5 mr-2" />
+            Log In
+          </Button>
+        </div>
+      </div>
+    );
   }
   
   return (

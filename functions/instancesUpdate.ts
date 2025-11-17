@@ -12,11 +12,11 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { id, data: updateData } = await req.json();
+        const { id, data } = await req.json();
         const db = getDb();
 
         const updatedInstance = {
-            ...updateData,
+            ...data,
             updated_date: new Date()
         };
 
@@ -24,9 +24,7 @@ Deno.serve(async (req) => {
             .set(updatedInstance)
             .where(eq(databaseInstances.id, id));
 
-        const [result] = await db.select().from(databaseInstances).where(eq(databaseInstances.id, id));
-
-        return Response.json({ data: result });
+        return Response.json({ data: updatedInstance });
     } catch (error) {
         console.error('Update instance error:', error);
         return Response.json({ error: error.message }, { status: 500 });

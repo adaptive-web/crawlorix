@@ -1,10 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
-import { drizzle } from 'npm:drizzle-orm@0.29.3/postgres-js';
-import postgres from 'npm:postgres@3.4.3';
+import { getDb } from './db/client.js';
 import { sql } from 'npm:drizzle-orm@0.29.3';
 
 Deno.serve(async (req) => {
-  let client;
   try {
     const base44 = createClientFromRequest(req);
     
@@ -25,41 +23,9 @@ Deno.serve(async (req) => {
       }, { status: 403 });
     }
 
-    let connectionString = Deno.env.get('DATABASE_URL');
-    if (!connectionString) {
-      return Response.json({ 
-        error: 'DATABASE_URL not configured',
-        details: 'Set DATABASE_URL in environment variables.'
-      }, { status: 500 });
-    }
-
-    // Clean up connection string
-    connectionString = connectionString.trim();
-    if (connectionString.includes('psql ') || connectionString.startsWith("'") || connectionString.startsWith('"')) {
-      connectionString = connectionString.replace(/^psql\s+['"]?/, '').replace(/['"]$/, '').trim();
-    }
-
-    // Validate connection string format
-    if (!connectionString.startsWith('postgres://') && !connectionString.startsWith('postgresql://')) {
-      return Response.json({ 
-        error: 'Invalid DATABASE_URL format',
-        details: 'DATABASE_URL must start with postgres:// or postgresql://'
-      }, { status: 500 });
-    }
-
     console.log('Starting migration for user:', user.email);
-    console.log('Connection string format:', connectionString.split('@')[0] + '@...');
 
-    // NeonDB-optimized connection settings
-    client = postgres(connectionString, { 
-      ssl: 'require',
-      max: 1,
-      idle_timeout: 20,
-      connect_timeout: 30,
-      prepare: false
-    });
-    
-    const db = drizzle(client);
+    const db = getDb();
 
     console.log('Database connection established');
 
@@ -145,14 +111,5 @@ Deno.serve(async (req) => {
       details: error.stack?.substring(0, 1000) || 'No additional details',
       type: error.constructor.name
     }, { status: 500 });
-  } finally {
-    if (client) {
-      try {
-        await client.end();
-        console.log('Database connection closed');
-      } catch (closeError) {
-        console.error('Error closing connection:', closeError);
-      }
-    }
   }
 });

@@ -16,10 +16,12 @@ export function getDb() {
         ssl: 'require',
         max: 1,
         idle_timeout: 20,
-        connect_timeout: 10,
+        connect_timeout: 30,
+        prepare: false
       });
       
       db = drizzle(client, { schema });
+      console.log('Database connection initialized successfully');
     } catch (error) {
       console.error('Database connection error:', error);
       throw new Error(`Failed to connect to database: ${error.message}`);

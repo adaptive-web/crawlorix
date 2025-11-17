@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react";
+
+import React, { useState, useEffect } from "react";
 import { instancesApi } from "@/components/utils/neonClient";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Plus, LogIn } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
+import { base44 } from "@/api/base44Client";
 
 import { startZillizInstanceJob } from "@/functions/startZillizInstanceJob";
 import { executeZillizInstance } from "@/functions/executeZillizInstance";
@@ -19,6 +21,7 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingInstance, setEditingInstance] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(null); // null: checking, true: authenticated, false: not authenticated
   
   const [isDryRunLoading, setIsDryRunLoading] = useState(false);
   const [dryRunResults, setDryRunResults] = useState(null);
@@ -28,8 +31,27 @@ export default function Dashboard() {
   const { toast } = useToast();
 
   useEffect(() => {
-    loadData();
+    checkAuth();
   }, []);
+
+  const checkAuth = async () => {
+    setIsLoading(true); // Indicate loading while checking auth
+    try {
+      const authenticated = await base44.auth.isAuthenticated();
+      setIsAuthenticated(authenticated);
+      if (authenticated) {
+        await loadData(); // Load data only if authenticated
+      } else {
+        setInstances([]); // Clear instances if not authenticated
+      }
+    } catch (error) {
+      console.error("Auth check error:", error);
+      setIsAuthenticated(false);
+      setInstances([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const loadData = async () => {
     setIsLoading(true);
@@ -38,118 +60,48 @@ export default function Dashboard() {
       setInstances(instancesData);
     } catch (error) {
       console.error("Error loading data:", error);
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
-    setIsLoading(false);
-  };
-
-  const handleCreateInstance = () => {
-    setEditingInstance(null);
-    setShowCreateDialog(true);
-  };
-
-  const handleEditInstance = (instance) => {
-    setEditingInstance(instance);
-    setShowCreateDialog(true);
-  };
-
-  const handleSaveInstance = async (instanceData) => {
-    try {
-      if (editingInstance) {
-        await instancesApi.update(editingInstance.id, instanceData);
+      if (error.message.includes("logged in")) { // Assuming this indicates an authentication issue
+        setIsAuthenticated(false);
+        setInstances([]); // Clear instances if not authenticated
       } else {
-        await instancesApi.create(instanceData);
-      }
-      setShowCreateDialog(false);
-      setEditingInstance(null);
-      loadData();
-      toast({
-        title: "Success",
-        description: editingInstance ? "Instance updated" : "Instance created",
-      });
-    } catch (error) {
-      console.error("Error saving instance:", error);
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleToggleStatus = async (instance) => {
-    try {
-      const newStatus = instance.status === 'active' ? 'paused' : 'active';
-      await instancesApi.update(instance.id, { status: newStatus });
-      loadData();
-    } catch (error) {
-      console.error("Error updating status:", error);
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleExecute = async (instance, isDryRun) => {
-    if (isDryRun) {
-      setIsDryRunLoading(true);
-      setDryRunError(null);
-      setDryRunResults(null);
-      setIsDryRunOpen(true);
-      try {
-        const { data, error } = await executeZillizInstance({ instance_id: instance.id });
-        if (error) throw new Error(error.message);
-        setDryRunResults(data.sample_results);
-      } catch (e) {
-        setDryRunError(e.message);
-      } finally {
-        setIsDryRunLoading(false);
-      }
-    } else {
-      try {
-          const { data, error } = await startZillizInstanceJob({ instance_id: instance.id });
-          if (error) throw new Error(error.message);
-          toast({
-              title: "Job Started Successfully!",
-              description: `Started processing job for "${instance.name}". View progress on the Jobs page.`,
-          });
-      } catch (e) {
-          console.error("Failed to start job:", e);
-          toast({
-              title: "Error Starting Job",
-              description: e.message,
-              variant: "destructive",
-          });
-      }
-    }
-  };
-
-  const handleDeleteInstance = async (instance) => {
-    if (window.confirm(`Are you sure you want to delete "${instance.name}"?`)) {
-      try {
-        await instancesApi.delete(instance.id);
-        loadData();
-        toast({
-          title: "Success",
-          description: "Instance deleted",
-        });
-      } catch (error) {
-        console.error("Error deleting instance:", error);
         toast({
           title: "Error",
           description: error.message,
           variant: "destructive",
         });
       }
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  const handleLogin = () => {
+    base44.auth.redirectToLogin();
+  };
+
+  if (isAuthenticated === false) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white/70 backdrop-blur-sm rounded-2xl shadow-xl p-8 text-center">
+          <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <LogIn className="w-8 h-8 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Authentication Required</h2>
+          <p className="text-slate-600 mb-6">Please log in to access the dashboard and manage your database instances.</p>
+          <Button 
+            onClick={handleLogin}
+            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+          >
+            <LogIn className="w-5 h-5 mr-2" />
+            Log In
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // If isAuthenticated is null (checking) or true, render the main dashboard.
+  // The existing isLoading state will cover the initial auth check UI (skeletons) and data loading.
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50/30 p-6">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -232,4 +184,107 @@ export default function Dashboard() {
       </div>
     </div>
   );
+
+  function handleCreateInstance() {
+    setEditingInstance(null);
+    setShowCreateDialog(true);
+  }
+
+  function handleEditInstance(instance) {
+    setEditingInstance(instance);
+    setShowCreateDialog(true);
+  }
+
+  async function handleSaveInstance(instanceData) {
+    try {
+      if (editingInstance) {
+        await instancesApi.update(editingInstance.id, instanceData);
+      } else {
+        await instancesApi.create(instanceData);
+      }
+      setShowCreateDialog(false);
+      setEditingInstance(null);
+      loadData();
+      toast({
+        title: "Success",
+        description: editingInstance ? "Instance updated" : "Instance created",
+      });
+    } catch (error) {
+      console.error("Error saving instance:", error);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function handleToggleStatus(instance) {
+    try {
+      const newStatus = instance.status === 'active' ? 'paused' : 'active';
+      await instancesApi.update(instance.id, { status: newStatus });
+      loadData();
+    } catch (error) {
+      console.error("Error updating status:", error);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function handleExecute(instance, isDryRun) {
+    if (isDryRun) {
+      setIsDryRunLoading(true);
+      setDryRunError(null);
+      setDryRunResults(null);
+      setIsDryRunOpen(true);
+      try {
+        const { data, error } = await executeZillizInstance({ instance_id: instance.id });
+        if (error) throw new Error(error.message);
+        setDryRunResults(data.sample_results);
+      } catch (e) {
+        setDryRunError(e.message);
+      } finally {
+        setIsDryRunLoading(false);
+      }
+    } else {
+      try {
+          const { data, error } = await startZillizInstanceJob({ instance_id: instance.id });
+          if (error) throw new Error(error.message);
+          toast({
+              title: "Job Started Successfully!",
+              description: `Started processing job for "${instance.name}". View progress on the Jobs page.`,
+          });
+      } catch (e) {
+          console.error("Failed to start job:", e);
+          toast({
+              title: "Error Starting Job",
+              description: e.message,
+              variant: "destructive",
+          });
+      }
+    }
+  }
+
+  async function handleDeleteInstance(instance) {
+    if (window.confirm(`Are you sure you want to delete "${instance.name}"?`)) {
+      try {
+        await instancesApi.delete(instance.id);
+        loadData();
+        toast({
+          title: "Success",
+          description: "Instance deleted",
+        });
+      } catch (error) {
+        console.error("Error deleting instance:", error);
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
+    }
+  }
 }

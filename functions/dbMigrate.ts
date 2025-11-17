@@ -6,10 +6,8 @@ import { sql } from 'npm:drizzle-orm@0.29.3';
 Deno.serve(async (req) => {
   let client;
   try {
-    // Initialize client
     const base44 = createClientFromRequest(req);
     
-    // Check authentication using isAuthenticated first
     const isAuth = await base44.auth.isAuthenticated();
     if (!isAuth) {
       return Response.json({ 
@@ -18,7 +16,6 @@ Deno.serve(async (req) => {
       }, { status: 401 });
     }
 
-    // Get user details
     const user = await base44.auth.me();
     
     if (!user || user.role !== 'admin') {
@@ -28,7 +25,7 @@ Deno.serve(async (req) => {
       }, { status: 403 });
     }
 
-    const connectionString = Deno.env.get('DATABASE_URL');
+    let connectionString = Deno.env.get('DATABASE_URL');
     if (!connectionString) {
       return Response.json({ 
         error: 'DATABASE_URL not configured',
@@ -36,23 +33,25 @@ Deno.serve(async (req) => {
       }, { status: 500 });
     }
 
-    // Validate connection string format
-    if (connectionString.includes('psql ') || connectionString.startsWith("'")) {
-      return Response.json({ 
-        error: 'Invalid DATABASE_URL format',
-        details: 'DATABASE_URL contains psql command prefix. Remove the "psql \'" prefix and closing "\'" from the connection string.'
-      }, { status: 500 });
+    // Clean up connection string
+    connectionString = connectionString.trim();
+    if (connectionString.includes('psql ') || connectionString.startsWith("'") || connectionString.startsWith('"')) {
+      connectionString = connectionString.replace(/^psql\s+['"]?/, '').replace(/['"]$/, '').trim();
     }
 
     console.log('Starting migration for user:', user.email);
 
     client = postgres(connectionString, { 
-      ssl: 'require', 
+      ssl: { rejectUnauthorized: false },
       max: 1,
-      connect_timeout: 30,
-      idle_timeout: 30,
-      max_lifetime: 120
+      connect_timeout: 60,
+      idle_timeout: 60,
+      max_lifetime: 300,
+      connection: {
+        application_name: 'base44_migration'
+      }
     });
+    
     const db = drizzle(client);
 
     console.log('Database connection established');

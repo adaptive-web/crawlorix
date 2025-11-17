@@ -1,6 +1,9 @@
-import { drizzle } from 'npm:drizzle-orm@0.29.3/postgres-js';
-import postgres from 'npm:postgres@3.4.3';
+import { drizzle } from 'npm:drizzle-orm@0.29.3/neon-serverless';
+import { Pool, neonConfig } from 'npm:@neondatabase/serverless@0.9.0';
 import * as schema from './schema.js';
+
+// Configure for Deno Deploy
+neonConfig.webSocketConstructor = WebSocket;
 
 // Create a connection for each function invocation
 export function getDb() {
@@ -10,17 +13,9 @@ export function getDb() {
   }
   
   try {
-    const client = postgres(connectionString, {
-      ssl: 'prefer',
-      max: 1,
-      idle_timeout: 20,
-      connect_timeout: 30,
-      prepare: false,
-      fetch_types: false
-    });
-    
-    const db = drizzle(client, { schema });
-    console.log('Database connection created');
+    const pool = new Pool({ connectionString });
+    const db = drizzle(pool, { schema });
+    console.log('Database connection created with Neon serverless driver');
     return db;
   } catch (error) {
     console.error('Database connection error:', error);

@@ -245,8 +245,8 @@ router.post('/dry-run', requireAuth, async (req, res) => {
             input: processedContent
           });
         }),
-        30000, // 30 second timeout for embeddings (they should be fast)
-        'Embedding generation timeout - this should not take more than 30 seconds'
+        60000, // 60 second timeout for embeddings (OpenAI can be slow)
+        'Embedding generation timeout - OpenAI took longer than 60 seconds'
       );
       embedding = embeddingResult.data[0].embedding;
       console.log(`Embedding generated: ${embedding.length} dimensions`);
@@ -459,8 +459,8 @@ async function processBatch(jobId) {
                 input: processedContent
               });
             }),
-            30000, // 30 second timeout
-            'Embedding generation timeout'
+            60000, // 60 second timeout (OpenAI can be slow)
+            'Embedding generation timeout - OpenAI took longer than 60 seconds'
           );
           updatedRecord[instance.vector_field_name] = embeddingResult.data[0].embedding;
           await addLog(`Record ${recordId}: Embedding generated (${embeddingResult.data[0].embedding.length} dims)`);

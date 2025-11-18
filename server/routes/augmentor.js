@@ -294,6 +294,7 @@ router.post('/dry-run', requireAuth, async (req, res) => {
     let embedding = null;
     if (instance.vector_field_name) {
       console.log('Generating embedding for processed content...');
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
       const embeddingResult = await withTimeout(
         withRetry(async () => {
           return await openai.embeddings.create({
@@ -486,6 +487,7 @@ async function processBatch(jobId) {
     if (instance.vector_field_name) {
       await addLog('Generating embeddings for all records in parallel...');
 
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
       const embeddingPromises = aiResponses.map(async (processedContent, idx) => {
         try {
           const embeddingResult = await withTimeout(

@@ -3,12 +3,10 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL ||
   (window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : `${window.location.origin}/api`);
 
-// Get auth token from your auth provider
-// TODO: Update this to match your authentication system
+// Get auth token from Base44 authentication
 function getAuthToken() {
-  // For now, return a placeholder token
-  // Replace this with your actual auth token retrieval logic
-  return localStorage.getItem('auth_token') || 'placeholder-token';
+  // Base44 stores the token with this key
+  return localStorage.getItem('base44_access_token') || 'placeholder-token';
 }
 
 async function apiRequest(endpoint, options = {}) {

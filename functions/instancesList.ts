@@ -1,6 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.4';
-import { neon } from 'npm:@neondatabase/serverless@0.9.0';
-import { drizzle } from 'npm:drizzle-orm@0.29.3/neon-http';
+import { getDb } from './db/client.js';
 import { databaseInstances } from './db/schema.js';
 import { desc } from 'npm:drizzle-orm@0.29.3';
 
@@ -17,13 +16,7 @@ Deno.serve(async (req) => {
         }
 
         console.log('instancesList: Getting database connection');
-        const connectionString = Deno.env.get('DATABASE_URL');
-        if (!connectionString) {
-            throw new Error('DATABASE_URL not configured');
-        }
-        
-        const sql = neon(connectionString);
-        const db = drizzle(sql);
+        const db = getDb();
         
         console.log('instancesList: Querying database');
         const instances = await db.select().from(databaseInstances).orderBy(desc(databaseInstances.created_date));

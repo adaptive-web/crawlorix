@@ -1,11 +1,8 @@
-import { drizzle } from 'npm:drizzle-orm@0.29.3/neon-serverless';
-import { Pool, neonConfig } from 'npm:@neondatabase/serverless@0.9.0';
+import { neon } from 'npm:@neondatabase/serverless@0.9.0';
+import { drizzle } from 'npm:drizzle-orm@0.29.3/neon-http';
 import * as schema from './schema.js';
 
-// Configure for Deno Deploy
-neonConfig.webSocketConstructor = WebSocket;
-
-// Create a fresh connection for each request (serverless best practice)
+// Use HTTP driver for Deno Deploy - more reliable than WebSocket in serverless
 export function getDb() {
   const connectionString = Deno.env.get('DATABASE_URL');
   if (!connectionString) {
@@ -13,8 +10,8 @@ export function getDb() {
   }
   
   try {
-    const pool = new Pool({ connectionString });
-    const db = drizzle(pool, { schema });
+    const sql = neon(connectionString);
+    const db = drizzle(sql, { schema });
     return db;
   } catch (error) {
     console.error('Database connection error:', error);

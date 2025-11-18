@@ -83,8 +83,17 @@ router.put('/:id', requireAuth, async (req, res) => {
     const instanceData = req.body;
     const db = getDb();
 
+    // Exclude fields that shouldn't be updated by the user
+    const {
+      id: _id,
+      created_date,
+      created_by,
+      last_run,
+      ...editableFields
+    } = instanceData;
+
     const updatedInstance = {
-      ...instanceData,
+      ...editableFields,
       updated_date: new Date()
     };
 

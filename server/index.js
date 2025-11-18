@@ -151,11 +151,12 @@ app.all('/api/admin/list-gemini-models', async (req, res) => {
   }
 });
 
-// Fix Gemini model names to include -latest suffix
+// Fix Gemini model names to use correct API model names
 app.all('/api/admin/fix-gemini-models', async (req, res) => {
   try {
     const { getDb } = await import('./db/client.js');
     const { databaseInstances } = await import('./db/schema.js');
+    const { eq } = await import('drizzle-orm');
 
     const db = getDb();
 
@@ -167,11 +168,11 @@ app.all('/api/admin/fix-gemini-models', async (req, res) => {
       const oldModel = instance.generative_model_name;
       let newModel = oldModel;
 
-      // Fix Gemini model names
-      if (oldModel === 'gemini-1.5-flash') {
-        newModel = 'gemini-1.5-flash-latest';
-      } else if (oldModel === 'gemini-1.5-pro') {
-        newModel = 'gemini-1.5-pro-latest';
+      // Fix old Gemini model names to use correct API names
+      if (oldModel === 'gemini-1.5-flash' || oldModel === 'gemini-1.5-flash-latest') {
+        newModel = 'gemini-flash-latest';
+      } else if (oldModel === 'gemini-1.5-pro' || oldModel === 'gemini-1.5-pro-latest') {
+        newModel = 'gemini-pro-latest';
       }
 
       if (newModel !== oldModel) {

@@ -49,16 +49,10 @@ async function callAIService(modelName, messages, temperature = 0.3) {
       throw new Error('GOOGLE_API_KEY environment variable is not configured. Please add it to your Railway environment variables to use Gemini models.');
     }
 
-    // Ensure Gemini model name has -latest suffix for API compatibility
-    let geminiModelName = modelName;
-    if (modelName === 'gemini-1.5-flash' || modelName === 'gemini-1.5-pro') {
-      geminiModelName = `${modelName}-latest`;
-      console.log(`Auto-correcting Gemini model name: ${modelName} -> ${geminiModelName}`);
-    }
-
     try {
       const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-      const model = genAI.getGenerativeModel({ model: geminiModelName });
+      // The SDK expects just the model name without 'models/' prefix
+      const model = genAI.getGenerativeModel({ model: modelName });
 
       // Convert OpenAI message format to Gemini format
       // Gemini uses a simpler format - just concatenate messages

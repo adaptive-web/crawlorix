@@ -151,17 +151,17 @@ export default function InstanceCard({
                             {instance.generative_model_name === 'gpt-4' && 'GPT-4'}
                             {instance.generative_model_name === 'gpt-4-turbo' && 'GPT-4 Turbo'}
                             {instance.generative_model_name === 'gpt-3.5-turbo' && 'GPT-3.5 Turbo'}
-                            {(instance.generative_model_name === 'gemini-1.5-pro' || instance.generative_model_name === 'gemini-1.5-pro-latest') && 'Gemini 1.5 Pro'}
-                            {(instance.generative_model_name === 'gemini-1.5-flash' || instance.generative_model_name === 'gemini-1.5-flash-latest') && 'Gemini 1.5 Flash'}
-                            {!['gpt-4o', 'gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-pro-latest', 'gemini-1.5-flash-latest'].includes(instance.generative_model_name) && instance.generative_model_name}
+                            {instance.generative_model_name === 'gemini-pro-latest' && 'Gemini Pro'}
+                            {instance.generative_model_name === 'gemini-flash-latest' && 'Gemini Flash'}
+                            {!['gpt-4o', 'gpt-4', 'gpt-4-turbo', 'gpt-3.5-turbo', 'gemini-pro-latest', 'gemini-flash-latest'].includes(instance.generative_model_name) && instance.generative_model_name}
                         </span>
                         <span className="text-xs text-slate-600 ml-2">
                             {instance.generative_model_name === 'gpt-4o' && '(~15-20s)'}
                             {instance.generative_model_name === 'gpt-4' && '(~30-40s)'}
                             {instance.generative_model_name === 'gpt-4-turbo' && '(~15-20s)'}
                             {instance.generative_model_name === 'gpt-3.5-turbo' && '(~5-7s)'}
-                            {(instance.generative_model_name === 'gemini-1.5-pro' || instance.generative_model_name === 'gemini-1.5-pro-latest') && '(~5-10s)'}
-                            {(instance.generative_model_name === 'gemini-1.5-flash' || instance.generative_model_name === 'gemini-1.5-flash-latest') && '(~2-4s)'}
+                            {instance.generative_model_name === 'gemini-pro-latest' && '(~5-10s)'}
+                            {instance.generative_model_name === 'gemini-flash-latest' && '(~2-4s)'}
                         </span>
                     </div>
                 </div>

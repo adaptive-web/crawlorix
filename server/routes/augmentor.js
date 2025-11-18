@@ -490,12 +490,13 @@ export async function processBatch(jobId) {
         current_batch_offset: newOffset,
         failed_records: newFailedRecords,
         last_batch_at: new Date(),
-        is_processing_batch: false, // Clear flag so scheduler can resume
+        is_processing_batch: false, // Clear flag so next batch can start
         updated_date: new Date()
       }).where(eq(jobs.id, jobId));
 
-      // Job will be resumed by scheduler in next minute
-      await addLog('Batch skipped - job will resume automatically');
+      // Continue immediately with setTimeout, scheduler will catch it if this fails
+      await addLog('Batch skipped - continuing to next batch');
+      setTimeout(() => processBatch(jobId), 1000);
       return;
     }
 
@@ -605,14 +606,15 @@ export async function processBatch(jobId) {
       processed_records: newProcessed,
       failed_records: newFailed,
       last_batch_at: new Date(),
-      is_processing_batch: false, // Clear flag so scheduler can resume
+      is_processing_batch: false, // Clear flag so next batch can start
       updated_date: new Date()
     }).where(eq(jobs.id, jobId));
 
-    await addLog(`Batch complete: ${successCount} succeeded, ${failCount} failed. Job will resume automatically.`);
+    await addLog(`Batch complete: ${successCount} succeeded, ${failCount} failed`);
 
-    // Job will be resumed by scheduler in next minute
-    // This is more reliable than setTimeout for Railway's environment
+    // Continue immediately with setTimeout (fast)
+    // If setTimeout is lost (timeout/restart), scheduler will resume within 60s (reliable)
+    setTimeout(() => processBatch(jobId), 1000);
 
   } catch (error) {
     console.error(`[Batch] Job ${jobId} processing error:`, error);

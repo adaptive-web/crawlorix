@@ -66,4 +66,35 @@ router.get('/:job_id/logs', requireAuth, async (req, res) => {
   }
 });
 
+// Cancel job
+router.post('/:job_id/cancel', requireAuth, async (req, res) => {
+  try {
+    const { job_id } = req.params;
+    const db = getDb();
+
+    const [job] = await db
+      .select()
+      .from(jobs)
+      .where(eq(jobs.id, job_id));
+
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    if (job.status !== 'running' && job.status !== 'pending') {
+      return res.status(400).json({ error: 'Job is not running or pending' });
+    }
+
+    await db
+      .update(jobs)
+      .set({ status: 'cancelled', updated_date: new Date() })
+      .where(eq(jobs.id, job_id));
+
+    res.json({ success: true, message: 'Job cancelled' });
+  } catch (error) {
+    console.error('Cancel job error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

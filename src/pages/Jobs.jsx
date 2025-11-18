@@ -9,8 +9,6 @@ import { format, formatDistanceToNow, parseISO } from "date-fns";
 import { useToast } from "@/components/ui/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { base44 } from "@/api/base44Client";
-
-import { cancelJob } from "@/functions/cancelJob";
 import LogViewer from '../components/jobs/LogViewer';
 
 
@@ -102,7 +100,7 @@ export default function JobsPage() {
   const handleCancelJob = async (jobId) => {
     if (!window.confirm("Are you sure you want to stop this job?")) return;
     try {
-      await cancelJob({ job_id: jobId });
+      await jobsApi.cancel(jobId);
       toast({
         title: "Job Cancelled",
         description: "The job will stop after completing its current batch.",

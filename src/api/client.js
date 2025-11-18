@@ -91,6 +91,13 @@ export const jobsApi = {
     const result = await apiRequest(`/jobs/${job_id}/logs`);
     return result.data;
   },
+
+  cancel: async (job_id) => {
+    const result = await apiRequest(`/jobs/${job_id}/cancel`, {
+      method: 'POST',
+    });
+    return result;
+  },
 };
 
 export default {

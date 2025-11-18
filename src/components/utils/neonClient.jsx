@@ -58,15 +58,20 @@ export const jobsApi = {
         const result = await apiCall('jobsList', { limit });
         return result.data;
     },
-    
+
     get: async (id) => {
         const result = await apiCall('jobsGet', { id });
         return result.data;
     },
-    
+
     logs: async (job_id) => {
         const result = await apiCall('jobsLogs', { job_id });
         return result.data;
+    },
+
+    cancel: async (job_id) => {
+        const result = await apiCall('cancelJob', { job_id });
+        return result;
     },
 };
 

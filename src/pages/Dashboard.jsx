@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { instancesApi } from "@/components/utils/neonClient";
 import { Button } from "@/components/ui/button";
@@ -56,19 +55,22 @@ export default function Dashboard() {
   const loadData = async () => {
     setIsLoading(true);
     try {
+      console.log('Loading instances from NeonDB...');
       const instancesData = await instancesApi.list();
-      setInstances(instancesData);
+      console.log('Instances loaded:', instancesData);
+      setInstances(instancesData || []);
     } catch (error) {
       console.error("Error loading data:", error);
-      if (error.message.includes("logged in")) { // Assuming this indicates an authentication issue
+      if (error.message.includes("logged in") || error.message.includes("Unauthorized")) {
         setIsAuthenticated(false);
-        setInstances([]); // Clear instances if not authenticated
+        setInstances([]);
       } else {
         toast({
           title: "Error",
           description: error.message,
           variant: "destructive",
         });
+        setInstances([]);
       }
     } finally {
       setIsLoading(false);

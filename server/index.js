@@ -114,6 +114,36 @@ app.all('/api/admin/update-to-gpt35', async (req, res) => {
   }
 });
 
+// List available Gemini models from Google API
+app.all('/api/admin/list-gemini-models', async (req, res) => {
+  try {
+    const { GoogleGenerativeAI } = await import('@google/generative-ai');
+
+    if (!process.env.GOOGLE_API_KEY) {
+      return res.status(400).json({ error: 'GOOGLE_API_KEY not configured' });
+    }
+
+    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+    const models = await genAI.listModels();
+
+    const modelList = models.map(m => ({
+      name: m.name,
+      displayName: m.displayName,
+      description: m.description,
+      supportedGenerationMethods: m.supportedGenerationMethods
+    }));
+
+    res.json({
+      success: true,
+      count: modelList.length,
+      models: modelList
+    });
+  } catch (error) {
+    console.error('List models error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Fix Gemini model names to include -latest suffix
 app.all('/api/admin/fix-gemini-models', async (req, res) => {
   try {

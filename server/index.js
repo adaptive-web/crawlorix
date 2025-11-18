@@ -117,16 +117,23 @@ app.all('/api/admin/update-to-gpt35', async (req, res) => {
 // List available Gemini models from Google API
 app.all('/api/admin/list-gemini-models', async (req, res) => {
   try {
-    const { GoogleGenerativeAI } = await import('@google/generative-ai');
-
     if (!process.env.GOOGLE_API_KEY) {
       return res.status(400).json({ error: 'GOOGLE_API_KEY not configured' });
     }
 
-    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-    const models = await genAI.listModels();
+    // Make direct API call to list models
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.GOOGLE_API_KEY}`
+    );
 
-    const modelList = models.map(m => ({
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    const modelList = data.models.map(m => ({
       name: m.name,
       displayName: m.displayName,
       description: m.description,

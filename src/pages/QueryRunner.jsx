@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { instancesApi } from '@/components/utils/neonClient';
+import { instancesApi } from '@/api/client';
 // TODO: Migrate to Express API endpoint
 // import { runZillizQuery } from '@/functions-stub';
 

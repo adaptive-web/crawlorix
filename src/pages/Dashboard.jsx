@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { instancesApi } from "@/components/utils/neonClient";
+import { instancesApi } from "@/api/client";
 import { Button } from "@/components/ui/button";
 import { Plus, LogIn } from "lucide-react";
 import { AnimatePresence } from "framer-motion";

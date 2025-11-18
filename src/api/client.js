@@ -1,5 +1,7 @@
 // API client for Railway backend
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+// Auto-detect API URL: use env var, or same origin in production, or localhost in dev
+const API_BASE_URL = import.meta.env.VITE_API_URL ||
+  (window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : `${window.location.origin}/api`);
 
 // Get auth token from your auth provider
 // TODO: Update this to match your authentication system

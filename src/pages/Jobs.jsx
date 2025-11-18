@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { jobsApi, instancesApi } from "@/components/utils/neonClient";
+import { jobsApi, instancesApi } from "@/api/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";

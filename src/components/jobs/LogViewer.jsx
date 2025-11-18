@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from 'react';
-import { jobsApi } from '@/components/utils/neonClient';
+import { jobsApi } from '@/api/client';
 import { Info, AlertCircle, Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 

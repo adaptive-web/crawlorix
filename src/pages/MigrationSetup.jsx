@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
-import { dbMigrate } from '@/functions/dbMigrate';
-import { testDbConnection } from '@/functions/testDbConnection';
-import { migrateData } from '@/functions/migrateData';
+import { dbMigrate, testDbConnection, migrateData } from '@/functions-stub';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle, XCircle, Loader2, Database, AlertTriangle, TestTube } from 'lucide-react';

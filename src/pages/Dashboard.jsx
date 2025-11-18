@@ -5,8 +5,7 @@ import { Plus, LogIn } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { base44 } from "@/api/base44Client";
 
-import { startZillizInstanceJob } from "@/functions/startZillizInstanceJob";
-import { executeZillizInstance } from "@/functions/executeZillizInstance";
+import { startZillizInstanceJob, executeZillizInstance } from "@/functions-stub";
 import { useToast } from "@/components/ui/use-toast";
 
 import StatsOverview from "../components/dashboard/StatsOverview";

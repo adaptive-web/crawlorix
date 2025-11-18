@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { instancesApi } from '@/components/utils/neonClient';
-import { runZillizQuery } from '@/functions/runZillizQuery';
+import { runZillizQuery } from '@/functions-stub';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

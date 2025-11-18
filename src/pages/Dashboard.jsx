@@ -5,7 +5,8 @@ import { Plus, LogIn } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { base44 } from "@/api/base44Client";
 
-import { startZillizInstanceJob, executeZillizInstance } from "@/functions-stub";
+// TODO: Migrate these functions to Express API endpoints
+// import { startZillizInstanceJob, executeZillizInstance } from "@/functions-stub";
 import { useToast } from "@/components/ui/use-toast";
 
 import StatsOverview from "../components/dashboard/StatsOverview";
@@ -236,37 +237,12 @@ export default function Dashboard() {
   }
 
   async function handleExecute(instance, isDryRun) {
-    if (isDryRun) {
-      setIsDryRunLoading(true);
-      setDryRunError(null);
-      setDryRunResults(null);
-      setIsDryRunOpen(true);
-      try {
-        const { data, error } = await executeZillizInstance({ instance_id: instance.id });
-        if (error) throw new Error(error.message);
-        setDryRunResults(data.sample_results);
-      } catch (e) {
-        setDryRunError(e.message);
-      } finally {
-        setIsDryRunLoading(false);
-      }
-    } else {
-      try {
-          const { data, error } = await startZillizInstanceJob({ instance_id: instance.id });
-          if (error) throw new Error(error.message);
-          toast({
-              title: "Job Started Successfully!",
-              description: `Started processing job for "${instance.name}". View progress on the Jobs page.`,
-          });
-      } catch (e) {
-          console.error("Failed to start job:", e);
-          toast({
-              title: "Error Starting Job",
-              description: e.message,
-              variant: "destructive",
-          });
-      }
-    }
+    // TODO: Implement these API endpoints in Express
+    toast({
+      title: "Feature Not Yet Implemented",
+      description: isDryRun ? "Dry run feature needs to be migrated to the new API." : "Start job feature needs to be migrated to the new API.",
+      variant: "destructive",
+    });
   }
 
   async function handleDeleteInstance(instance) {

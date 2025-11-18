@@ -2,7 +2,8 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { instancesApi } from '@/components/utils/neonClient';
-import { runZillizQuery } from '@/functions-stub';
+// TODO: Migrate to Express API endpoint
+// import { runZillizQuery } from '@/functions-stub';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -186,10 +187,8 @@ export default function QueryRunner() {
         setDebugData(null); // Clear previous debug data
 
         try {
-            const response = await runZillizQuery({
-                instance_id: instance.id,
-                search_term: searchTerm,
-            });
+            // TODO: Implement this API endpoint in Express
+            throw new Error("Query runner feature needs to be migrated to the new API. Please use Base44 for now.");
 
             // Store raw response for debugging
             setDebugData({

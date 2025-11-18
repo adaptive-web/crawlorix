@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { dbMigrate, testDbConnection, migrateData } from '@/functions-stub';
+// TODO: Migrate these functions to Express API endpoints
+// import { dbMigrate, testDbConnection, migrateData } from '@/functions-stub';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle, XCircle, Loader2, Database, AlertTriangle, TestTube } from 'lucide-react';
@@ -17,76 +18,22 @@ export default function MigrationSetup() {
     const testConnection = async () => {
         setIsTesting(true);
         setTestResult(null);
-        setError(null);
-
-        try {
-            const { data, error: fnError } = await testDbConnection({});
-            
-            if (fnError) {
-                throw new Error(fnError.message || 'Connection test failed');
-            }
-            
-            if (data.error) {
-                throw new Error(data.error);
-            }
-            
-            setTestResult(data);
-        } catch (err) {
-            console.error('Connection test error:', err);
-            setError(err.message || 'Failed to test connection');
-        } finally {
-            setIsTesting(false);
-        }
+        setError("This feature needs to be migrated to the new API. Please use Base44 for now.");
+        setIsTesting(false);
     };
 
     const runMigration = async () => {
         setIsRunning(true);
         setResult(null);
-        setError(null);
-
-        try {
-            const { data, error: fnError } = await dbMigrate({});
-            
-            if (fnError) {
-                throw new Error(fnError.message || 'Migration failed');
-            }
-            
-            if (data.error) {
-                throw new Error(`${data.error}${data.details ? '\n\n' + data.details : ''}`);
-            }
-            
-            setResult(data);
-        } catch (err) {
-            console.error('Migration error:', err);
-            setError(err.message || 'Failed to run migration');
-        } finally {
-            setIsRunning(false);
-        }
+        setError("This feature needs to be migrated to the new API. Please use Base44 for now.");
+        setIsRunning(false);
     };
 
     const runDataMigration = async () => {
         setIsMigratingData(true);
         setDataResult(null);
-        setError(null);
-
-        try {
-            const { data, error: fnError } = await migrateData({});
-            
-            if (fnError) {
-                throw new Error(fnError.message || 'Data migration failed');
-            }
-            
-            if (data.error) {
-                throw new Error(`${data.error}${data.details ? '\n\n' + data.details : ''}`);
-            }
-            
-            setDataResult(data);
-        } catch (err) {
-            console.error('Data migration error:', err);
-            setError(err.message || 'Failed to migrate data');
-        } finally {
-            setIsMigratingData(false);
-        }
+        setError("This feature needs to be migrated to the new API. Please use Base44 for now.");
+        setIsMigratingData(false);
     };
 
     return (

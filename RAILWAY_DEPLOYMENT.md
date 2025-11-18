@@ -13,7 +13,7 @@ This guide will help you deploy your Zilliz AI Data Flow app to Railway.
 1. Go to [Railway](https://railway.app) and sign in
 2. Click "New Project"
 3. Select "Deploy from GitHub repo"
-4. Choose your repository: `base44dev/zilliz-ai-data-flow-a06ed9ec`
+4. Choose your repository: `dangfrost/NewCrawlerNov18`
 
 ## Step 2: Configure Environment Variables
 

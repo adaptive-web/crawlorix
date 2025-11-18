@@ -41,6 +41,50 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// One-time migration: Update augmentors to GPT-3.5-turbo
+app.post('/api/admin/update-to-gpt35', async (req, res) => {
+  try {
+    const { getDb } = await import('./db/client.js');
+    const { databaseInstances } = await import('./db/schema.js');
+    const { eq } = await import('drizzle-orm');
+
+    const db = getDb();
+
+    // Get all augmentor instances
+    const instances = await db
+      .select()
+      .from(databaseInstances)
+      .where(eq(databaseInstances.instance_type, 'augmentor'));
+
+    const updates = [];
+    for (const instance of instances) {
+      await db
+        .update(databaseInstances)
+        .set({
+          generative_model_name: 'gpt-3.5-turbo',
+          updated_date: new Date()
+        })
+        .where(eq(databaseInstances.id, instance.id));
+
+      updates.push({
+        id: instance.id,
+        name: instance.name,
+        old_model: instance.generative_model_name,
+        new_model: 'gpt-3.5-turbo'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Updated ${updates.length} augmentor instances to GPT-3.5-turbo`,
+      updates
+    });
+  } catch (error) {
+    console.error('Update error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Serve static files from Vite build (for production)
 if (process.env.NODE_ENV === 'production') {
   const distPath = join(__dirname, '..', 'dist');

@@ -23,8 +23,8 @@ const AI_MODELS = [
   { value: 'gpt-4-turbo', label: 'GPT-4 Turbo', description: 'Good quality, fast (~15-20s)', provider: 'OpenAI' },
   { value: 'gpt-4', label: 'GPT-4', description: 'Highest quality, slower (~30-40s)', provider: 'OpenAI' },
   { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo', description: 'Fast but lower quality (~5-7s)', provider: 'OpenAI' },
-  { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', description: 'Excellent quality, fast (~5-10s)', provider: 'Google' },
-  { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', description: 'Very fast, good quality (~2-4s)', provider: 'Google' }
+  { value: 'gemini-1.5-pro-latest', label: 'Gemini 1.5 Pro', description: 'Excellent quality, fast (~5-10s)', provider: 'Google' },
+  { value: 'gemini-1.5-flash-latest', label: 'Gemini 1.5 Flash', description: 'Very fast, good quality (~2-4s)', provider: 'Google' }
 ];
 
 const DEFAULT_PROMPTS = {

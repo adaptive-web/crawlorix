@@ -5,14 +5,8 @@ import * as schema from './schema.js';
 // Configure for Deno Deploy
 neonConfig.webSocketConstructor = WebSocket;
 
-let dbInstance = null;
-
-// Create a single connection that can be reused
+// Create a fresh connection for each request (serverless best practice)
 export function getDb() {
-  if (dbInstance) {
-    return dbInstance;
-  }
-  
   const connectionString = Deno.env.get('DATABASE_URL');
   if (!connectionString) {
     throw new Error('DATABASE_URL environment variable is not set. Please configure it in your app settings.');
@@ -20,9 +14,8 @@ export function getDb() {
   
   try {
     const pool = new Pool({ connectionString });
-    dbInstance = drizzle(pool, { schema });
-    console.log('Database connection created with Neon serverless driver');
-    return dbInstance;
+    const db = drizzle(pool, { schema });
+    return db;
   } catch (error) {
     console.error('Database connection error:', error);
     throw new Error(`Failed to connect to database: ${error.message}`);

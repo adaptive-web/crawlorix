@@ -8,7 +8,7 @@ import { requireAuth } from '../middleware/auth.js';
 const router = express.Router();
 
 const BATCH_SIZE = 5; // Increased from 2 for better performance on Railway
-const MAX_CONTENT_LENGTH = 12000;
+const MAX_CONTENT_LENGTH = 8000; // Reduced from 12000 for faster processing
 const OPENAI_TIMEOUT = 120000; // 120 seconds
 const MAX_RETRIES = 3;
 
@@ -427,6 +427,38 @@ async function processBatch(jobId) {
       return;
     }
 
+    // Generate all embeddings in parallel for speed
+    let embeddingsByIndex = {};
+    if (instance.vector_field_name) {
+      await addLog('Generating embeddings for all records in parallel...');
+
+      const embeddingPromises = aiResponses.map(async (processedContent, idx) => {
+        try {
+          const embeddingResult = await withTimeout(
+            withRetry(async () => {
+              return await openai.embeddings.create({
+                model: instance.embedding_model_name,
+                input: processedContent
+              });
+            }),
+            60000,
+            'Embedding generation timeout'
+          );
+          return { idx, embedding: embeddingResult.data[0].embedding };
+        } catch (error) {
+          console.error(`Embedding failed for record ${idx}:`, error);
+          return { idx, embedding: null, error: error.message };
+        }
+      });
+
+      const embeddingResults = await Promise.all(embeddingPromises);
+      embeddingResults.forEach(result => {
+        embeddingsByIndex[result.idx] = result.embedding;
+      });
+
+      await addLog(`Generated ${embeddingResults.filter(r => r.embedding).length} embeddings`);
+    }
+
     // Process each record
     let successCount = 0;
     let failCount = 0;
@@ -449,21 +481,14 @@ async function processBatch(jobId) {
 
         const updatedRecord = { ...record, [instance.target_field]: updatedContent };
 
-        // Generate new embedding for processed content
+        // Add pre-generated embedding
         if (instance.vector_field_name) {
-          await addLog(`Record ${recordId}: Generating embedding...`);
-          const embeddingResult = await withTimeout(
-            withRetry(async () => {
-              return await openai.embeddings.create({
-                model: instance.embedding_model_name,
-                input: processedContent
-              });
-            }),
-            60000, // 60 second timeout (OpenAI can be slow)
-            'Embedding generation timeout - OpenAI took longer than 60 seconds'
-          );
-          updatedRecord[instance.vector_field_name] = embeddingResult.data[0].embedding;
-          await addLog(`Record ${recordId}: Embedding generated (${embeddingResult.data[0].embedding.length} dims)`);
+          if (embeddingsByIndex[i]) {
+            updatedRecord[instance.vector_field_name] = embeddingsByIndex[i];
+            await addLog(`Record ${recordId}: Embedding added (${embeddingsByIndex[i].length} dims)`);
+          } else {
+            throw new Error('Embedding generation failed for this record');
+          }
         }
 
         // Delete old record

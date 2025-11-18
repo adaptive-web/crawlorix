@@ -335,8 +335,8 @@ router.post('/dry-run', requireAuth, async (req, res) => {
   }
 });
 
-// Process a batch (called recursively)
-async function processBatch(jobId) {
+// Process a batch (called recursively) - EXPORTED for scheduler
+export async function processBatch(jobId) {
   const db = getDb();
 
   try {
@@ -353,6 +353,17 @@ async function processBatch(jobId) {
       console.log(`[Batch] Job ${jobId} is cancelled, stopping`);
       return;
     }
+
+    // Check if already processing (race condition prevention)
+    if (job.is_processing_batch) {
+      console.log(`[Batch] Job ${jobId} is already being processed, skipping`);
+      return;
+    }
+
+    // Set processing flag
+    await db.update(jobs)
+      .set({ is_processing_batch: true, updated_date: new Date() })
+      .where(eq(jobs.id, jobId));
 
     // Get instance
     const [instance] = await db
@@ -410,7 +421,12 @@ async function processBatch(jobId) {
 
     if (records.length === 0) {
       await db.update(jobs)
-        .set({ status: 'completed', details: 'All records processed', updated_date: new Date() })
+        .set({
+          status: 'completed',
+          details: 'All records processed',
+          is_processing_batch: false,
+          updated_date: new Date()
+        })
         .where(eq(jobs.id, jobId));
       await addLog('Job completed - no more records to process');
       return;
@@ -474,11 +490,12 @@ async function processBatch(jobId) {
         current_batch_offset: newOffset,
         failed_records: newFailedRecords,
         last_batch_at: new Date(),
+        is_processing_batch: false, // Clear flag so scheduler can resume
         updated_date: new Date()
       }).where(eq(jobs.id, jobId));
 
-      // Continue to next batch
-      setTimeout(() => processBatch(jobId), 1000);
+      // Job will be resumed by scheduler in next minute
+      await addLog('Batch skipped - job will resume automatically');
       return;
     }
 
@@ -588,13 +605,14 @@ async function processBatch(jobId) {
       processed_records: newProcessed,
       failed_records: newFailed,
       last_batch_at: new Date(),
+      is_processing_batch: false, // Clear flag so scheduler can resume
       updated_date: new Date()
     }).where(eq(jobs.id, jobId));
 
-    await addLog(`Batch complete: ${successCount} succeeded, ${failCount} failed`);
+    await addLog(`Batch complete: ${successCount} succeeded, ${failCount} failed. Job will resume automatically.`);
 
-    // Trigger next batch after a short delay
-    setTimeout(() => processBatch(jobId), 1000);
+    // Job will be resumed by scheduler in next minute
+    // This is more reliable than setTimeout for Railway's environment
 
   } catch (error) {
     console.error(`[Batch] Job ${jobId} processing error:`, error);
@@ -603,6 +621,7 @@ async function processBatch(jobId) {
       await db.update(jobs).set({
         status: 'failed',
         details: error.message,
+        is_processing_batch: false, // Clear flag on error
         updated_date: new Date()
       }).where(eq(jobs.id, jobId));
 

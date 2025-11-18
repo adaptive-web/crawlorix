@@ -237,12 +237,77 @@ export default function Dashboard() {
   }
 
   async function handleExecute(instance, isDryRun) {
-    // TODO: Implement these API endpoints in Express
-    toast({
-      title: "Feature Not Yet Implemented",
-      description: isDryRun ? "Dry run feature needs to be migrated to the new API." : "Start job feature needs to be migrated to the new API.",
-      variant: "destructive",
-    });
+    if (isDryRun) {
+      // Dry run
+      setIsDryRunLoading(true);
+      setDryRunResults(null);
+      setDryRunError(null);
+      setIsDryRunOpen(true);
+
+      try {
+        const response = await fetch(`${window.location.origin}/api/augmentor/dry-run`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('base44_access_token') || 'placeholder-token'}`
+          },
+          body: JSON.stringify({ instance_id: instance.id })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Dry run failed');
+        }
+
+        const result = await response.json();
+        setDryRunResults(result);
+        toast({
+          title: "Dry Run Complete",
+          description: "Review the before/after comparison below.",
+        });
+      } catch (error) {
+        console.error('Dry run error:', error);
+        setDryRunError(error.message);
+        toast({
+          title: "Dry Run Failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      } finally {
+        setIsDryRunLoading(false);
+      }
+    } else {
+      // Start full job
+      try {
+        const response = await fetch(`${window.location.origin}/api/augmentor/start`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('base44_access_token') || 'placeholder-token'}`
+          },
+          body: JSON.stringify({ instance_id: instance.id })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to start job');
+        }
+
+        const result = await response.json();
+        toast({
+          title: "Job Started",
+          description: `Job ${result.job_id} is now running. Check the Jobs page for progress.`,
+        });
+        loadData();
+      } catch (error) {
+        console.error('Start job error:', error);
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
+    }
   }
 
   async function handleDeleteInstance(instance) {

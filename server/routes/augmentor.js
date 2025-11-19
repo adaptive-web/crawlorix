@@ -1,6 +1,7 @@
 import express from 'express';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import pLimit from 'p-limit';
 import { getDb, generateId } from '../db/client.js';
 import { databaseInstances, jobs, jobLogs } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -8,9 +9,9 @@ import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
 
-const BATCH_SIZE = 5; // Increased from 2 for better performance on Railway
+const BATCH_SIZE = 10; // Increased from 5 for better throughput
 const MAX_CONTENT_LENGTH = 100000; // Increased to handle larger content (max seen: 62k chars)
-const OPENAI_TIMEOUT = 120000; // 120 seconds
+const OPENAI_TIMEOUT = 30000; // Reduced to 30 seconds for faster failure detection
 const MAX_RETRIES = 3;
 const CLEAN_THRESHOLD = 0.15; // If <15% of content remains after language removal, consider it "clean" (skip AI)
 
@@ -970,33 +971,49 @@ export async function processBatch(jobId, currentRetry = 0) {
       const processIndividually = combinedPromptSize > 50000;
 
       if (processIndividually) {
-        await addLog(`Large batch detected (${combinedPromptSize} chars) - processing records individually to avoid timeout`);
+        await addLog(`Large batch detected (${combinedPromptSize} chars) - processing records in parallel for improved speed`);
 
-        let processedCount = 0;
-        for (const { idx, prompt, content } of batchPrompts) {
-          try {
-            const aiResult = await withTimeout(
-              withRetry(async () => {
-                return await callAIService(
-                  instance.generative_model_name,
-                  [{ role: 'user', content: prompt }],
-                  0.3
-                );
-              }),
-              OPENAI_TIMEOUT,
-              'AI processing timeout for individual record'
-            );
+        // Use parallel processing with concurrency limit
+        const limit = pLimit(3); // Process 3 records concurrently for Gemini Flash
 
-            aiResponsesByIdx[idx] = aiResult.choices[0].message.content.trim();
-            processedCount++;
-            await addLog(`Processed record ${processedCount}/${batchPrompts.length} individually`);
-          } catch (error) {
-            await addLog(`Failed to process record ${idx} individually: ${error.message}`, 'ERROR');
-            // Continue with other records
-          }
-        }
+        const aiPromises = batchPrompts.map(({ idx, prompt, content }, arrayIdx) =>
+          limit(async () => {
+            const startTime = Date.now();
+            try {
+              // Add small delay between requests to avoid rate limits
+              if (arrayIdx > 0) {
+                await new Promise(resolve => setTimeout(resolve, 100 * Math.min(arrayIdx, 5)));
+              }
 
-        await addLog(`Pass 2 complete: AI processed ${processedCount}/${batchPrompts.length} records individually`);
+              const aiResult = await withTimeout(
+                withRetry(async () => {
+                  return await callAIService(
+                    instance.generative_model_name,
+                    [{ role: 'user', content: prompt }],
+                    0.3
+                  );
+                }, 2, 1000), // Reduced retries to 2 with 1s delay
+                OPENAI_TIMEOUT,
+                'AI processing timeout for individual record'
+              );
+
+              aiResponsesByIdx[idx] = aiResult.choices[0].message.content.trim();
+              const duration = Math.round((Date.now() - startTime) / 1000);
+              await addLog(`Record ${idx + 1}/${batchPrompts.length} processed in ${duration}s`);
+              return { idx, success: true, duration };
+            } catch (error) {
+              const duration = Math.round((Date.now() - startTime) / 1000);
+              await addLog(`Record ${idx + 1} failed after ${duration}s: ${error.message}`, 'ERROR');
+              return { idx, success: false, error: error.message, duration };
+            }
+          })
+        );
+
+        const results = await Promise.all(aiPromises);
+        const successCount = results.filter(r => r.success).length;
+        const totalDuration = Math.max(...results.map(r => r.duration || 0));
+
+        await addLog(`Pass 2 complete: AI processed ${successCount}/${batchPrompts.length} records in parallel (${totalDuration}s total)`);
 
       } else {
         // Process as batch (original logic)
@@ -1077,10 +1094,12 @@ export async function processBatch(jobId, currentRetry = 0) {
     // Generate embeddings for final processed content (Pass 1 or Pass 2 results)
     let embeddingsByIdx = {};
     if (instance.vector_field_name) {
-      await addLog('Generating embeddings for all records in parallel...');
+      await addLog('Generating embeddings for all records with rate limiting...');
 
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const embeddingPromises = recordsWithPass1.map(async (r) => {
+      const embeddingLimit = pLimit(5); // OpenAI can handle more concurrent requests
+
+      const embeddingPromises = recordsWithPass1.map(async (r, idx) => {
         // Get final content: AI result if available, otherwise Pass 1 result or original
         let finalContent;
         if (aiResponsesByIdx[r.idx]) {
@@ -1091,30 +1110,50 @@ export async function processBatch(jobId, currentRetry = 0) {
           finalContent = r.originalContent;
         }
 
-        try {
-          const embeddingResult = await withTimeout(
-            withRetry(async () => {
-              return await openai.embeddings.create({
-                model: instance.embedding_model_name,
-                input: finalContent
-              });
-            }),
-            60000,
-            'Embedding generation timeout'
-          );
-          return { idx: r.idx, embedding: embeddingResult.data[0].embedding };
-        } catch (error) {
-          console.error(`Embedding failed for record ${r.idx}:`, error);
-          return { idx: r.idx, embedding: null, error: error.message };
-        }
+        return embeddingLimit(async () => {
+          try {
+            // Add small delay to avoid rate limits
+            if (idx > 0) {
+              await new Promise(resolve => setTimeout(resolve, 50 * Math.min(idx, 10)));
+            }
+
+            const embeddingResult = await withTimeout(
+              withRetry(async () => {
+                return await openai.embeddings.create({
+                  model: instance.embedding_model_name,
+                  input: finalContent.substring(0, 8192) // Ensure content isn't too long
+                });
+              }, 2, 500), // 2 retries with 500ms delay
+              15000, // 15 second timeout
+              'Embedding generation timeout'
+            );
+
+            return { idx: r.idx, embedding: embeddingResult.data[0].embedding };
+          } catch (error) {
+            console.error(`Embedding failed for record ${r.idx}:`, error.message);
+            // Return null embedding but don't fail the entire batch
+            return { idx: r.idx, embedding: null, error: error.message };
+          }
+        });
       });
 
       const embeddingResults = await Promise.all(embeddingPromises);
+      let embeddingSuccessCount = 0;
+
       embeddingResults.forEach(result => {
-        embeddingsByIdx[result.idx] = result.embedding;
+        if (result.embedding) {
+          embeddingsByIdx[result.idx] = result.embedding;
+          embeddingSuccessCount++;
+        }
       });
 
-      await addLog(`Generated ${embeddingResults.filter(r => r.embedding).length} embeddings`);
+      await addLog(`Generated ${embeddingSuccessCount}/${embeddingResults.length} embeddings successfully`);
+
+      // Log any failures for debugging
+      const failures = embeddingResults.filter(r => !r.embedding);
+      if (failures.length > 0) {
+        await addLog(`Embedding failures: ${failures.map(f => `#${f.idx}`).join(', ')}`, 'ERROR');
+      }
     }
 
     // ===== UPDATE RECORDS IN ZILLIZ =====
@@ -1166,7 +1205,10 @@ export async function processBatch(jobId, currentRetry = 0) {
             updatedRecord[instance.vector_field_name] = embeddingsByIdx[r.idx];
             await addLog(`Record ${recordId}: Embedding added (${embeddingsByIdx[r.idx].length} dims)`);
           } else {
-            throw new Error('Embedding generation failed for this record');
+            // Don't fail the entire record, just skip the embedding
+            await addLog(`Record ${recordId}: Processing without embedding (generation failed)`, 'WARN');
+            // Optionally add a flag to retry later
+            updatedRecord.embedding_status = 'pending_retry';
           }
         }
 

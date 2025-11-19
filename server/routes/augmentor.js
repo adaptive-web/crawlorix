@@ -11,7 +11,7 @@ const router = express.Router();
 
 const BATCH_SIZE = 10; // Increased from 5 for better throughput
 const MAX_CONTENT_LENGTH = 100000; // Increased to handle larger content (max seen: 62k chars)
-const OPENAI_TIMEOUT = 30000; // Reduced to 30 seconds for faster failure detection
+const OPENAI_TIMEOUT = 60000; // 60 seconds base timeout (30s was too aggressive for large content)
 const MAX_RETRIES = 3;
 const CLEAN_THRESHOLD = 0.15; // If <15% of content remains after language removal, consider it "clean" (skip AI)
 
@@ -973,8 +973,13 @@ export async function processBatch(jobId, currentRetry = 0) {
       if (processIndividually) {
         await addLog(`Large batch detected (${combinedPromptSize} chars) - processing records in parallel for improved speed`);
 
+        // Adjust concurrency based on average content size
+        const avgContentSize = combinedPromptSize / batchPrompts.length;
+        const concurrency = avgContentSize > 15000 ? 2 : 3; // Reduce concurrency for very large content
+
         // Use parallel processing with concurrency limit
-        const limit = pLimit(3); // Process 3 records concurrently for Gemini Flash
+        const limit = pLimit(concurrency);
+        await addLog(`Using concurrency limit of ${concurrency} for content avg size ${Math.round(avgContentSize)} chars`);
 
         const aiPromises = batchPrompts.map(({ idx, prompt, content }, arrayIdx) =>
           limit(async () => {
@@ -985,6 +990,16 @@ export async function processBatch(jobId, currentRetry = 0) {
                 await new Promise(resolve => setTimeout(resolve, 100 * Math.min(arrayIdx, 5)));
               }
 
+              // Adaptive timeout based on content size
+              const contentSize = prompt.length;
+              const timeoutMs = Math.max(
+                30000, // Minimum 30 seconds
+                Math.min(
+                  120000, // Maximum 120 seconds
+                  Math.round(contentSize * 4) // ~4ms per character
+                )
+              );
+
               const aiResult = await withTimeout(
                 withRetry(async () => {
                   return await callAIService(
@@ -993,8 +1008,8 @@ export async function processBatch(jobId, currentRetry = 0) {
                     0.3
                   );
                 }, 2, 1000), // Reduced retries to 2 with 1s delay
-                OPENAI_TIMEOUT,
-                'AI processing timeout for individual record'
+                timeoutMs,
+                `AI processing timeout for individual record (${Math.round(timeoutMs/1000)}s timeout)`
               );
 
               aiResponsesByIdx[idx] = aiResult.choices[0].message.content.trim();

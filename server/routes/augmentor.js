@@ -1,7 +1,6 @@
 import express from 'express';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { removeStopwords, eng, fra, deu, spa, ita } from 'stopword';
 import { franc } from 'franc';
 import { getDb, generateId } from '../db/client.js';
 import { databaseInstances, jobs, jobLogs } from '../db/schema.js';
@@ -14,56 +13,67 @@ const BATCH_SIZE = 5; // Increased from 2 for better performance on Railway
 const MAX_CONTENT_LENGTH = 8000; // Reduced from 12000 for faster processing
 const OPENAI_TIMEOUT = 120000; // 120 seconds
 const MAX_RETRIES = 3;
-const CLEAN_THRESHOLD = 0.15; // If <15% of content remains after stopword removal, consider it "clean"
+const CLEAN_THRESHOLD = 0.15; // If <15% of content remains after language removal, consider it "clean"
 
-// Language code to stopword library mapping
-const STOPWORD_LIBS = {
-  en: eng,
-  fr: fra,
-  de: deu,
-  es: spa,
-  it: ita
+// Language codes that franc can detect
+// https://github.com/wooorm/franc/blob/main/packages/franc/support.md
+const LANGUAGE_CODES = {
+  en: 'eng', // English
+  fr: 'fra', // French
+  de: 'deu', // German
+  es: 'spa', // Spanish
+  it: 'ita'  // Italian
 };
 
-// Pass 1: Programmatic language filtering using stopwords
-function removeLanguageWords(text, languagesToRemove = ['en']) {
+// Pass 1: Programmatic language filtering using language detection
+function removeLanguageSentences(text, languagesToRemove = ['en']) {
   if (!text || text.trim().length === 0) {
-    return { cleanedText: '', stats: { original: 0, cleaned: 0, removed: 0, percentRemaining: 0 } };
+    return {
+      cleanedText: '',
+      stats: {
+        original: 0,
+        cleaned: 0,
+        removed: 0,
+        percentRemaining: 0,
+        sentencesOriginal: 0,
+        sentencesKept: 0,
+        sentencesRemoved: 0
+      }
+    };
   }
 
   const originalLength = text.length;
 
-  // Tokenize text into words (simple split by whitespace and punctuation)
-  const words = text.toLowerCase().match(/\b[\w']+\b/g) || [];
-  const originalWordCount = words.length;
+  // Split into sentences (handle common sentence endings)
+  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+  const originalSentenceCount = sentences.length;
 
-  // Collect all stopword lists for requested languages
-  const stopwordLists = [];
-  for (const lang of languagesToRemove) {
-    if (STOPWORD_LIBS[lang]) {
-      stopwordLists.push(STOPWORD_LIBS[lang]);
+  // Convert language codes to franc format
+  const francCodes = languagesToRemove.map(lang => LANGUAGE_CODES[lang]).filter(Boolean);
+
+  const keptSentences = [];
+  const removedSentences = [];
+
+  for (const sentence of sentences) {
+    const trimmed = sentence.trim();
+    if (trimmed.length < 10) {
+      // Too short to reliably detect - keep it
+      keptSentences.push(sentence);
+      continue;
+    }
+
+    // Detect language
+    const detectedLang = franc(trimmed);
+
+    // If detected language is in our remove list, remove it
+    if (francCodes.includes(detectedLang)) {
+      removedSentences.push(sentence);
+    } else {
+      keptSentences.push(sentence);
     }
   }
 
-  // Combine all stopword lists
-  const combinedStopwords = [].concat(...stopwordLists);
-
-  // Remove stopwords
-  const cleanedWords = removeStopwords(words, combinedStopwords);
-
-  // Reconstruct text by removing matching words from original
-  let cleanedText = text;
-  const removedWords = words.filter(w => !cleanedWords.includes(w));
-
-  // Remove each stopword from the original text (case-insensitive)
-  for (const word of removedWords) {
-    const regex = new RegExp(`\\b${word}\\b`, 'gi');
-    cleanedText = cleanedText.replace(regex, '');
-  }
-
-  // Clean up extra whitespace
-  cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
-
+  const cleanedText = keptSentences.join(' ').trim();
   const cleanedLength = cleanedText.length;
   const percentRemaining = originalLength > 0 ? cleanedLength / originalLength : 0;
 
@@ -71,12 +81,12 @@ function removeLanguageWords(text, languagesToRemove = ['en']) {
     cleanedText,
     stats: {
       original: originalLength,
-      originalWords: originalWordCount,
       cleaned: cleanedLength,
-      cleanedWords: cleanedWords.length,
       removed: originalLength - cleanedLength,
-      removedWords: originalWordCount - cleanedWords.length,
-      percentRemaining: Math.round(percentRemaining * 100) / 100
+      percentRemaining: Math.round(percentRemaining * 100) / 100,
+      sentencesOriginal: originalSentenceCount,
+      sentencesKept: keptSentences.length,
+      sentencesRemoved: removedSentences.length
     }
   };
 }

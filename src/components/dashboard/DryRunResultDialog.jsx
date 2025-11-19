@@ -85,36 +85,85 @@ export default function DryRunResultDialog({ open, onOpenChange, results, error,
           </div>
         </div>
 
-        {/* Before/After Comparison */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Before */}
+        {/* Three-Stage Comparison: Original → Pass 1 → Final */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* 1. Original */}
           <div className="border border-slate-200 rounded-lg overflow-hidden">
             <div className="bg-slate-100 px-4 py-2 border-b border-slate-200">
-              <h3 className="font-semibold text-slate-900">Before (Original)</h3>
+              <h3 className="font-semibold text-slate-900">1. Original</h3>
+              <p className="text-xs text-slate-600 mt-1">
+                {results.original?.length || results.before.content.length} chars
+              </p>
             </div>
             <div className="p-4 bg-white max-h-96 overflow-y-auto">
               <p className="text-sm text-slate-700 whitespace-pre-wrap font-mono">
-                {results.before.content}
+                {results.original?.content || results.before.content}
               </p>
             </div>
           </div>
 
-          {/* After */}
+          {/* 2. After Pass 1 (Programmatic) */}
+          <div className="border border-blue-200 rounded-lg overflow-hidden">
+            <div className="bg-blue-50 px-4 py-2 border-b border-blue-200">
+              <h3 className="font-semibold text-blue-900">2. After Pass 1 (Programmatic)</h3>
+              <p className="text-xs text-blue-700 mt-1">
+                {results.pass1?.stats?.chars_after_filtering || 'N/A'} chars
+                {results.pass1?.stats?.sentences_removed > 0 && (
+                  <span className="ml-2">
+                    • {results.pass1.stats.sentences_removed} sentences removed
+                  </span>
+                )}
+              </p>
+            </div>
+            <div className="p-4 bg-white max-h-96 overflow-y-auto">
+              <p className="text-sm text-slate-700 whitespace-pre-wrap font-mono">
+                {results.pass1?.cleaned_content || results.before.content}
+              </p>
+            </div>
+            {results.pass1?.stats && (
+              <div className="px-4 py-2 bg-blue-50 border-t border-blue-200 text-xs">
+                <div className="flex gap-4 text-blue-700">
+                  {Object.entries(results.pass1.stats.language_counts || {}).map(([lang, count]) => (
+                    <span key={lang}>
+                      <strong>{lang}:</strong> {count}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 3. Final (After AI) */}
           <div className="border border-green-200 rounded-lg overflow-hidden">
-            <div className="bg-green-50 px-4 py-2 border-b border-green-200 flex items-center justify-between">
-              <h3 className="font-semibold text-green-900">After (AI Processed)</h3>
-              {hasEmbedding && (
-                <Badge variant="outline" className="text-green-700 border-green-300 bg-green-100">
-                  <CheckCircle className="w-4 h-4 mr-1"/>
-                  Vector Updated
-                </Badge>
-              )}
+            <div className="bg-green-50 px-4 py-2 border-b border-green-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-green-900">3. Final (After AI)</h3>
+                  <p className="text-xs text-green-700 mt-1">
+                    {results.final?.length || results.after.content.length} chars
+                    {results.pass2?.skipped && (
+                      <span className="ml-2">• AI Skipped</span>
+                    )}
+                  </p>
+                </div>
+                {hasEmbedding && (
+                  <Badge variant="outline" className="text-green-700 border-green-300 bg-green-100">
+                    <CheckCircle className="w-4 h-4 mr-1"/>
+                    Vector
+                  </Badge>
+                )}
+              </div>
             </div>
             <div className="p-4 bg-white max-h-96 overflow-y-auto">
               <p className="text-sm text-slate-700 whitespace-pre-wrap font-mono">
                 {results.after.content}
               </p>
             </div>
+            {results.final?.processing_path && (
+              <div className="px-4 py-2 bg-green-50 border-t border-green-200 text-xs text-green-700">
+                <strong>Path:</strong> {results.final.processing_path}
+              </div>
+            )}
           </div>
         </div>
 

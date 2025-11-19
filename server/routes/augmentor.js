@@ -457,7 +457,7 @@ export async function processBatch(jobId, currentRetry = 0) {
   const db = getDb();
 
   try {
-    console.log(`[Batch] Processing job ${jobId} (retry ${currentRetry}/${MAX_BATCH_RETRIES})`);
+    console.log(`[Batch] ===== Processing job ${jobId} (retry ${currentRetry}/${MAX_BATCH_RETRIES}) =====`);
 
     // Get job
     const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId));
@@ -466,8 +466,15 @@ export async function processBatch(jobId, currentRetry = 0) {
       return;
     }
 
+    console.log(`[Batch] Job ${jobId} status: ${job.status}, offset: ${job.current_batch_offset}, processed: ${job.processed_records}/${job.total_records}, is_processing: ${job.is_processing_batch}`);
+
     if (job.status === 'cancelled') {
       console.log(`[Batch] Job ${jobId} is cancelled, stopping`);
+      return;
+    }
+
+    if (job.status === 'completed') {
+      console.log(`[Batch] Job ${jobId} is already completed, stopping`);
       return;
     }
 
@@ -755,7 +762,21 @@ export async function processBatch(jobId, currentRetry = 0) {
     }).where(eq(jobs.id, jobId));
 
     await addLog(`Batch complete: ${successCount} succeeded, ${failCount} failed`);
+    console.log(`[Batch] Job ${jobId} - Batch complete. New offset: ${newOffset}, Processed: ${newProcessed}/${job.total_records}`);
 
+    // Check if we're done
+    if (newProcessed + newFailed >= job.total_records) {
+      await db.update(jobs).set({
+        status: 'completed',
+        details: `Completed: ${newProcessed} processed, ${newFailed} failed`,
+        updated_date: new Date()
+      }).where(eq(jobs.id, jobId));
+      await addLog(`Job completed: ${newProcessed} records processed, ${newFailed} failed`);
+      console.log(`[Batch] Job ${jobId} - COMPLETED. Total: ${newProcessed} processed, ${newFailed} failed`);
+      return;
+    }
+
+    console.log(`[Batch] Job ${jobId} - Scheduling next batch in 1 second...`);
     // Continue immediately with setTimeout (fast), reset retry counter for next batch
     // If setTimeout is lost (timeout/restart), scheduler will resume within 60s (reliable)
     setTimeout(() => processBatch(jobId, 0), 1000);

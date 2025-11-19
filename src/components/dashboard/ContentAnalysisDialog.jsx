@@ -15,7 +15,6 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, BarChart3, AlertTriangle, FileText } from 'lucide-react';
-import { ScrollArea } from '@/components/ui/scroll-area';
 
 export default function ContentAnalysisDialog({ open, onOpenChange, results, error, isLoading }) {
   const renderContent = () => {
@@ -105,12 +104,12 @@ export default function ContentAnalysisDialog({ open, onOpenChange, results, err
         </div>
 
         {/* Records Table */}
-        <div className="flex-1 border border-slate-200 rounded-lg overflow-hidden flex flex-col">
+        <div className="flex-1 border border-slate-200 rounded-lg overflow-hidden flex flex-col min-h-0">
           <div className="bg-slate-100 px-4 py-3 border-b border-slate-200 flex items-center gap-2">
             <FileText className="w-4 h-4 text-slate-600" />
             <h3 className="font-semibold text-slate-900">Records by Size (Largest First)</h3>
           </div>
-          <ScrollArea className="flex-1">
+          <div className="flex-1 overflow-auto">
             <Table>
               <TableHeader className="sticky top-0 bg-slate-50 z-10">
                 <TableRow>
@@ -154,7 +153,7 @@ export default function ContentAnalysisDialog({ open, onOpenChange, results, err
                 ))}
               </TableBody>
             </Table>
-          </ScrollArea>
+          </div>
         </div>
       </div>
     );

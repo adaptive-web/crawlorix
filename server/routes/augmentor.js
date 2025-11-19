@@ -1,7 +1,6 @@
 import express from 'express';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { franc } from 'franc';
 import { getDb, generateId } from '../db/client.js';
 import { databaseInstances, jobs, jobLogs } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -15,17 +14,45 @@ const OPENAI_TIMEOUT = 120000; // 120 seconds
 const MAX_RETRIES = 3;
 const CLEAN_THRESHOLD = 0.15; // If <15% of content remains after language removal, consider it "clean" (skip AI)
 
-// Language codes that franc can detect
-// https://github.com/wooorm/franc/blob/main/packages/franc/support.md
-const LANGUAGE_CODES = {
-  en: 'eng', // English
-  fr: 'fra', // French
-  de: 'deu', // German
-  es: 'spa', // Spanish
-  it: 'ita'  // Italian
-};
+// Top 300 most common English words for detection
+const COMMON_ENGLISH_WORDS = new Set([
+  'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i', 'it', 'for', 'not', 'on', 'with',
+  'he', 'as', 'you', 'do', 'at', 'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she',
+  'or', 'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their', 'what', 'so', 'up', 'out', 'if',
+  'about', 'who', 'get', 'which', 'go', 'me', 'when', 'make', 'can', 'like', 'time', 'no', 'just', 'him',
+  'know', 'take', 'people', 'into', 'year', 'your', 'good', 'some', 'could', 'them', 'see', 'other', 'than',
+  'then', 'now', 'look', 'only', 'come', 'its', 'over', 'think', 'also', 'back', 'after', 'use', 'two',
+  'how', 'our', 'work', 'first', 'well', 'way', 'even', 'new', 'want', 'because', 'any', 'these', 'give',
+  'day', 'most', 'us', 'is', 'was', 'are', 'been', 'has', 'had', 'were', 'said', 'did', 'having', 'may',
+  'should', 'am', 'being', 'can', 'could', 'would', 'will', 'shall', 'might', 'must', 'ought',
+  'very', 'here', 'where', 'why', 'how', 'when', 'who', 'what', 'which', 'whose', 'whom',
+  'man', 'woman', 'child', 'person', 'people', 'family', 'friend', 'group', 'government', 'company',
+  'number', 'part', 'place', 'case', 'fact', 'hand', 'eye', 'life', 'world', 'house', 'point', 'thing',
+  'tell', 'call', 'try', 'ask', 'need', 'feel', 'become', 'leave', 'put', 'mean', 'keep', 'let', 'begin',
+  'seem', 'help', 'show', 'hear', 'play', 'run', 'move', 'live', 'believe', 'hold', 'bring', 'happen',
+  'write', 'sit', 'stand', 'lose', 'pay', 'meet', 'include', 'continue', 'set', 'learn', 'change', 'lead',
+  'understand', 'watch', 'follow', 'stop', 'create', 'speak', 'read', 'spend', 'grow', 'open', 'walk', 'win',
+  'teach', 'offer', 'remember', 'consider', 'appear', 'buy', 'serve', 'die', 'send', 'expect', 'build',
+  'stay', 'fall', 'cut', 'reach', 'kill', 'raise', 'pass', 'sell', 'decide', 'return', 'explain', 'hope',
+  'develop', 'carry', 'break', 'receive', 'agree', 'support', 'hit', 'produce', 'eat', 'cover', 'catch',
+  'draw', 'choose', 'cause', 'point', 'identify', 'turn', 'listen', 'buy', 'pick', 'wear', 'introduce'
+]);
 
-// Pass 1: Programmatic language filtering using language detection
+// Detect if a sentence is English based on common word frequency
+function isEnglishSentence(sentence) {
+  // Extract words (lowercase, alphanumeric only)
+  const words = sentence.toLowerCase().match(/\b[a-z]+\b/g) || [];
+  if (words.length < 3) return false; // Too short to determine
+
+  // Count how many words are common English words
+  const englishWordCount = words.filter(word => COMMON_ENGLISH_WORDS.has(word)).length;
+  const englishWordRatio = englishWordCount / words.length;
+
+  // If >40% of words are common English words, consider it English
+  return englishWordRatio > 0.4;
+}
+
+// Pass 1: Programmatic language filtering using English word detection
 function removeLanguageSentences(text, languagesToRemove = ['en']) {
   if (!text || text.trim().length === 0) {
     return {
@@ -37,42 +64,59 @@ function removeLanguageSentences(text, languagesToRemove = ['en']) {
         percentRemaining: 0,
         sentencesOriginal: 0,
         sentencesKept: 0,
-        sentencesRemoved: 0
+        sentencesRemoved: 0,
+        englishSentences: 0,
+        nonEnglishSentences: 0
       }
     };
   }
 
   const originalLength = text.length;
 
-  // Split into sentences (handle common sentence endings)
-  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
-  const originalSentenceCount = sentences.length;
+  // Split into sentences (improved regex to capture all text)
+  const sentenceRegex = /[^.!?]+[.!?]+/g;
+  const matchedSentences = text.match(sentenceRegex) || [];
 
-  // Convert language codes to franc format
-  const francCodes = languagesToRemove.map(lang => LANGUAGE_CODES[lang]).filter(Boolean);
+  // If there's remaining text without ending punctuation, add it
+  const lastMatchEnd = matchedSentences.join('').length;
+  const remainingText = text.substring(lastMatchEnd).trim();
+  const sentences = remainingText ? [...matchedSentences, remainingText] : matchedSentences;
+
+  // Fallback if no sentences found
+  if (sentences.length === 0) {
+    sentences.push(text);
+  }
+
+  const originalSentenceCount = sentences.length;
 
   const keptSentences = [];
   const removedSentences = [];
-  const languageStats = {}; // Track what languages were detected
+  let englishCount = 0;
+  let nonEnglishCount = 0;
+
+  // Only remove English if 'en' is in the removal list
+  const shouldRemoveEnglish = languagesToRemove.includes('en');
 
   for (const sentence of sentences) {
     const trimmed = sentence.trim();
-    if (trimmed.length < 10) {
-      // Too short to reliably detect - keep it
+    if (trimmed.length < 3) {
+      // Too short - keep it
       keptSentences.push(sentence);
       continue;
     }
 
-    // Detect language
-    const detectedLang = franc(trimmed);
+    // Check if sentence is English
+    const isEnglish = isEnglishSentence(trimmed);
 
-    // Track language stats
-    languageStats[detectedLang] = (languageStats[detectedLang] || 0) + 1;
-
-    // If detected language is in our remove list, remove it
-    if (francCodes.includes(detectedLang)) {
-      removedSentences.push(sentence);
+    if (isEnglish) {
+      englishCount++;
+      if (shouldRemoveEnglish) {
+        removedSentences.push(sentence);
+      } else {
+        keptSentences.push(sentence);
+      }
     } else {
+      nonEnglishCount++;
       keptSentences.push(sentence);
     }
   }
@@ -91,7 +135,8 @@ function removeLanguageSentences(text, languagesToRemove = ['en']) {
       sentencesOriginal: originalSentenceCount,
       sentencesKept: keptSentences.length,
       sentencesRemoved: removedSentences.length,
-      languageStats // Include detected languages
+      englishSentences: englishCount,
+      nonEnglishSentences: nonEnglishCount
     }
   };
 }
@@ -732,10 +777,8 @@ export async function processBatch(jobId, currentRetry = 0) {
     for (const r of recordsWithPass1) {
       if (r.pass1Result) {
         const stats = r.pass1Result.stats;
-        const langStats = Object.entries(stats.languageStats || {})
-          .map(([lang, count]) => `${lang}:${count}`)
-          .join(', ');
-        await addLog(`R${r.idx + 1}: ${stats.sentencesOriginal} sentences, removed ${stats.sentencesRemoved} (${Math.round((1 - stats.percentRemaining) * 100)}%), kept ${stats.percentRemaining * 100}% | Languages: ${langStats || 'none detected'}`);
+        const percentRemoved = Math.round((1 - stats.percentRemaining) * 100);
+        await addLog(`R${r.idx + 1}: ${stats.sentencesOriginal} sentences (${stats.englishSentences} EN, ${stats.nonEnglishSentences} other) | Removed ${stats.sentencesRemoved} (${percentRemoved}%), kept ${stats.percentRemaining * 100}%`);
       }
     }
 

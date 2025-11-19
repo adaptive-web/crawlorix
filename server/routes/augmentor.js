@@ -53,6 +53,7 @@ function removeLanguageSentences(text, languagesToRemove = ['en']) {
 
   const keptSentences = [];
   const removedSentences = [];
+  const languageStats = {}; // Track what languages were detected
 
   for (const sentence of sentences) {
     const trimmed = sentence.trim();
@@ -64,6 +65,9 @@ function removeLanguageSentences(text, languagesToRemove = ['en']) {
 
     // Detect language
     const detectedLang = franc(trimmed);
+
+    // Track language stats
+    languageStats[detectedLang] = (languageStats[detectedLang] || 0) + 1;
 
     // If detected language is in our remove list, remove it
     if (francCodes.includes(detectedLang)) {
@@ -86,7 +90,8 @@ function removeLanguageSentences(text, languagesToRemove = ['en']) {
       percentRemaining: Math.round(percentRemaining * 100) / 100,
       sentencesOriginal: originalSentenceCount,
       sentencesKept: keptSentences.length,
-      sentencesRemoved: removedSentences.length
+      sentencesRemoved: removedSentences.length,
+      languageStats // Include detected languages
     }
   };
 }
@@ -594,10 +599,48 @@ export async function processBatch(jobId, currentRetry = 0) {
 
     // Start job if pending
     if (job.status === 'pending') {
-      await db.update(jobs)
-        .set({ status: 'running', started_at: new Date(), updated_date: new Date() })
-        .where(eq(jobs.id, jobId));
-      await addLog('Job started');
+      // Get total record count from Zilliz
+      await addLog('Counting total records in collection...');
+      const countQuery = {
+        collectionName: instance.collection_name,
+        filter: instance.query_filter || '',
+        offset: 0,
+        limit: 1, // We just need the count, not the actual records
+        outputFields: [instance.primary_key_field]
+      };
+
+      try {
+        // Query with max limit to get all matching records
+        const countQueryLarge = {
+          ...countQuery,
+          limit: 16384 // Zilliz max limit
+        };
+        const countResponse = await zillizApiCall(
+          instance.zilliz_endpoint,
+          instance.zilliz_token,
+          '/v2/vectordb/entities/query',
+          countQueryLarge
+        );
+        const totalRecords = countResponse.data?.length || 0;
+        await addLog(`Total records to process: ${totalRecords}`);
+
+        // Update job with total count
+        await db.update(jobs)
+          .set({
+            status: 'running',
+            started_at: new Date(),
+            total_records: totalRecords,
+            updated_date: new Date()
+          })
+          .where(eq(jobs.id, jobId));
+        await addLog('Job started');
+      } catch (countError) {
+        await addLog(`Warning: Could not get total count: ${countError.message}`, 'ERROR');
+        await db.update(jobs)
+          .set({ status: 'running', started_at: new Date(), updated_date: new Date() })
+          .where(eq(jobs.id, jobId));
+        await addLog('Job started (without total count)');
+      }
     }
 
     // Fetch batch
@@ -684,6 +727,17 @@ export async function processBatch(jobId, currentRetry = 0) {
     const aiNeededRecords = recordsWithPass1.filter(r => r.needsAI);
 
     await addLog(`Pass 1 complete: ${cleanRecords.length} clean (no AI needed), ${aiNeededRecords.length} need AI refinement`);
+
+    // Log detailed Pass 1 stats for each record
+    for (const r of recordsWithPass1) {
+      if (r.pass1Result) {
+        const stats = r.pass1Result.stats;
+        const langStats = Object.entries(stats.languageStats || {})
+          .map(([lang, count]) => `${lang}:${count}`)
+          .join(', ');
+        await addLog(`R${r.idx + 1}: ${stats.sentencesOriginal} sentences, removed ${stats.sentencesRemoved} (${Math.round((1 - stats.percentRemaining) * 100)}%), kept ${stats.percentRemaining * 100}% | Languages: ${langStats || 'none detected'}`);
+      }
+    }
 
     // Log detailed content info
     const contentSizes = recordsWithPass1.map(r =>

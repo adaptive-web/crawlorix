@@ -642,7 +642,8 @@ export async function processBatch(jobId, currentRetry = 0) {
       });
     };
 
-    // Start job if pending
+    // Start job if pending and get total record count
+    let totalRecordsToProcess = job.total_records; // Use existing count if job is already running
     if (job.status === 'pending') {
       // Get total record count from Zilliz
       await addLog('Counting total records in collection...');
@@ -666,15 +667,15 @@ export async function processBatch(jobId, currentRetry = 0) {
           '/v2/vectordb/entities/query',
           countQueryLarge
         );
-        const totalRecords = countResponse.data?.length || 0;
-        await addLog(`Total records to process: ${totalRecords}`);
+        totalRecordsToProcess = countResponse.data?.length || 0;
+        await addLog(`Total records to process: ${totalRecordsToProcess}`);
 
         // Update job with total count
         await db.update(jobs)
           .set({
             status: 'running',
             started_at: new Date(),
-            total_records: totalRecords,
+            total_records: totalRecordsToProcess,
             updated_date: new Date()
           })
           .where(eq(jobs.id, jobId));
@@ -1024,10 +1025,10 @@ export async function processBatch(jobId, currentRetry = 0) {
     }).where(eq(jobs.id, jobId));
 
     await addLog(`Batch complete: ${successCount} succeeded, ${failCount} failed | Pass1: ${pass1CleanedCount} clean, Pass2: ${pass2ProcessedCount} AI`);
-    console.log(`[Batch] Job ${jobId} - Batch complete. New offset: ${newOffset}, Processed: ${newProcessed}/${job.total_records}`);
+    console.log(`[Batch] Job ${jobId} - Batch complete. New offset: ${newOffset}, Processed: ${newProcessed}/${totalRecordsToProcess}`);
 
     // Check if we're done
-    if (newProcessed + newFailed >= job.total_records) {
+    if (newProcessed + newFailed >= totalRecordsToProcess) {
       const details = `Completed: ${newProcessed} processed, ${newFailed} failed | Pass1: ${newPass1Cleaned} clean (${Math.round((newPass1Cleaned / newProcessed) * 100)}%), Pass2: ${newPass2Processed} AI (${Math.round((newPass2Processed / newProcessed) * 100)}%)`;
       await db.update(jobs).set({
         status: 'completed',

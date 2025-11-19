@@ -944,80 +944,119 @@ export async function processBatch(jobId, currentRetry = 0) {
     if (aiNeededRecords.length > 0) {
       await addLog(`Sending ${aiNeededRecords.length} records to ${instance.generative_model_name} for Pass 2 AI refinement...`);
 
+      // Check if batch prompt is too large for efficient processing
       const batchPrompts = aiNeededRecords.map((r, batchIdx) => {
         const contentForAI = enableTwoPass ? r.pass1Result.cleanedText : r.originalContent;
         const promptWithContent = instance.prompt.replace(/\{\{FIELD_VALUE\}\}/g, contentForAI);
-        return `[RECORD ${batchIdx + 1}]\n${promptWithContent}`;
+        return { idx: r.idx, prompt: promptWithContent, content: contentForAI };
       });
 
-      const combinedPrompt = batchPrompts.join('\n\n---\n\n');
-      await addLog(`Pass 2 combined prompt: ${combinedPrompt.length} chars`);
+      const combinedPromptTest = batchPrompts.map((p, i) => `[RECORD ${i + 1}]\n${p.prompt}`).join('\n\n---\n\n');
+      const combinedPromptSize = combinedPromptTest.length;
+      await addLog(`Pass 2 combined prompt: ${combinedPromptSize} chars`);
 
-      try {
-        const aiResult = await withTimeout(
-          withRetry(async () => {
-            return await callAIService(
-              instance.generative_model_name,
-              [
-                { role: 'system', content: 'Process each record separately. Return responses in the format: [RECORD X]\n<processed content>' },
-                { role: 'user', content: combinedPrompt }
-              ],
-              0.3
+      // If combined prompt >50k chars, process individually to avoid timeouts
+      const processIndividually = combinedPromptSize > 50000;
+
+      if (processIndividually) {
+        await addLog(`Large batch detected (${combinedPromptSize} chars) - processing records individually to avoid timeout`);
+
+        let processedCount = 0;
+        for (const { idx, prompt, content } of batchPrompts) {
+          try {
+            const aiResult = await withTimeout(
+              withRetry(async () => {
+                return await callAIService(
+                  instance.generative_model_name,
+                  [{ role: 'user', content: prompt }],
+                  0.3
+                );
+              }),
+              OPENAI_TIMEOUT,
+              'AI processing timeout for individual record'
             );
-          }),
-          OPENAI_TIMEOUT,
-          'AI processing timeout - batch may be too large or service is slow'
-        );
 
-        const fullResponse = aiResult.choices[0].message.content;
-        const recordResponses = fullResponse.split(/\[RECORD \d+\]/);
-        const aiResponses = recordResponses.slice(1).map(r => r.trim());
-
-        if (aiResponses.length !== aiNeededRecords.length) {
-          throw new Error(`AI returned ${aiResponses.length} responses but expected ${aiNeededRecords.length}`);
+            aiResponsesByIdx[idx] = aiResult.choices[0].message.content.trim();
+            processedCount++;
+            await addLog(`Processed record ${processedCount}/${batchPrompts.length} individually`);
+          } catch (error) {
+            await addLog(`Failed to process record ${idx} individually: ${error.message}`, 'ERROR');
+            // Continue with other records
+          }
         }
 
-        // Map AI responses back to original indices
-        aiNeededRecords.forEach((r, batchIdx) => {
-          aiResponsesByIdx[r.idx] = aiResponses[batchIdx];
-        });
+        await addLog(`Pass 2 complete: AI processed ${processedCount}/${batchPrompts.length} records individually`);
 
-        await addLog(`Pass 2 complete: AI processed ${aiResponses.length} records`);
+      } else {
+        // Process as batch (original logic)
+        const combinedPrompt = batchPrompts.map((p, i) => `[RECORD ${i + 1}]\n${p.prompt}`).join('\n\n---\n\n');
 
-      } catch (batchError) {
-        // Retry batch processing if we haven't hit max retries
-        if (currentRetry < MAX_BATCH_RETRIES) {
-        await addLog(`Batch AI processing failed: ${batchError.message}. Retrying (${currentRetry + 1}/${MAX_BATCH_RETRIES})...`, 'ERROR');
+        try {
+          const aiResult = await withTimeout(
+            withRetry(async () => {
+              return await callAIService(
+                instance.generative_model_name,
+                [
+                  { role: 'system', content: 'Process each record separately. Return responses in the format: [RECORD X]\n<processed content>' },
+                  { role: 'user', content: combinedPrompt }
+                ],
+                0.3
+              );
+            }),
+            OPENAI_TIMEOUT,
+            'AI processing timeout - batch may be too large or service is slow'
+          );
 
-        await db.update(jobs).set({
-          is_processing_batch: false, // Clear flag for retry
-          updated_date: new Date()
-        }).where(eq(jobs.id, jobId));
+          const fullResponse = aiResult.choices[0].message.content;
+          const recordResponses = fullResponse.split(/\[RECORD \d+\]/);
+          const aiResponses = recordResponses.slice(1).map(r => r.trim());
 
-        // Retry with exponential backoff: 2s, 4s, 8s
-        const retryDelay = Math.pow(2, currentRetry + 1) * 1000;
-        setTimeout(() => processBatch(jobId, currentRetry + 1), retryDelay);
-        return;
-      }
+          if (aiResponses.length !== aiNeededRecords.length) {
+            throw new Error(`AI returned ${aiResponses.length} responses but expected ${aiNeededRecords.length}`);
+          }
 
-      // Max retries exceeded - skip this batch
-      await addLog(`Batch AI processing failed after ${MAX_BATCH_RETRIES} attempts: ${batchError.message}. Skipping batch.`, 'ERROR');
+          // Map AI responses back to original indices
+          aiNeededRecords.forEach((r, batchIdx) => {
+            aiResponsesByIdx[r.idx] = aiResponses[batchIdx];
+          });
 
-      const newOffset = job.current_batch_offset + records.length;
-      const newFailedRecords = job.failed_records + records.length;
+          await addLog(`Pass 2 complete: AI processed ${aiResponses.length} records as batch`);
 
-      await db.update(jobs).set({
-        current_batch_offset: newOffset,
-        failed_records: newFailedRecords,
-        last_batch_at: new Date(),
-        is_processing_batch: false, // Clear flag so next batch can start
-        updated_date: new Date()
-      }).where(eq(jobs.id, jobId));
+        } catch (batchError) {
+          // Retry batch processing if we haven't hit max retries
+          if (currentRetry < MAX_BATCH_RETRIES) {
+            await addLog(`Batch AI processing failed: ${batchError.message}. Retrying (${currentRetry + 1}/${MAX_BATCH_RETRIES})...`, 'ERROR');
 
-      // Continue to next batch (reset retry counter)
-      await addLog('Moving to next batch');
-      setTimeout(() => processBatch(jobId, 0), 1000);
-      return;
+            await db.update(jobs).set({
+              is_processing_batch: false, // Clear flag for retry
+              updated_date: new Date()
+            }).where(eq(jobs.id, jobId));
+
+            // Retry with exponential backoff: 2s, 4s, 8s
+            const retryDelay = Math.pow(2, currentRetry + 1) * 1000;
+            setTimeout(() => processBatch(jobId, currentRetry + 1), retryDelay);
+            return;
+          }
+
+          // Max retries exceeded - skip this batch
+          await addLog(`Batch AI processing failed after ${MAX_BATCH_RETRIES} attempts: ${batchError.message}. Skipping batch.`, 'ERROR');
+
+          const newOffset = job.current_batch_offset + records.length;
+          const newFailedRecords = job.failed_records + records.length;
+
+          await db.update(jobs).set({
+            current_batch_offset: newOffset,
+            failed_records: newFailedRecords,
+            last_batch_at: new Date(),
+            is_processing_batch: false, // Clear flag so next batch can start
+            updated_date: new Date()
+          }).where(eq(jobs.id, jobId));
+
+          // Continue to next batch (reset retry counter)
+          await addLog('Moving to next batch');
+          setTimeout(() => processBatch(jobId, 0), 1000);
+          return;
+        }
       }
     } else {
       await addLog('No AI processing needed - all records cleaned by Pass 1');

@@ -801,7 +801,9 @@ export async function processBatch(jobId, currentRetry = 0) {
     };
 
     // Start job if pending and get total record count
-    let totalRecordsToProcess = job.total_records; // Use existing count if job is already running
+    let totalRecordsToProcess = job.total_records || 0; // Use existing count if job is already running
+    console.log(`[Batch] Initial totalRecordsToProcess from job.total_records: ${totalRecordsToProcess}`);
+
     if (job.status === 'pending') {
       // Get total record count from Zilliz
       await addLog('Counting total records in collection...');
@@ -1283,8 +1285,29 @@ export async function processBatch(jobId, currentRetry = 0) {
     await addLog(`Batch complete: ${successCount} succeeded, ${failCount} failed | Pass1: ${pass1CleanedCount} clean, Pass2: ${pass2ProcessedCount} AI`);
     console.log(`[Batch] Job ${jobId} - Batch complete. New offset: ${newOffset}, Processed: ${newProcessed}/${totalRecordsToProcess}`);
 
-    // Check if we're done
-    if (newProcessed + newFailed >= totalRecordsToProcess) {
+    // Debug logging for batch continuation issue
+    console.log(`[Batch Debug] totalRecordsToProcess=${totalRecordsToProcess}, job.total_records=${job.total_records}, newProcessed=${newProcessed}, newFailed=${newFailed}`);
+    await addLog(`Debug: totalRecordsToProcess=${totalRecordsToProcess}, newProcessed+newFailed=${newProcessed + newFailed}`);
+
+    // Check if we're done - ensure totalRecordsToProcess is valid
+    if (!totalRecordsToProcess || totalRecordsToProcess === 0) {
+      console.error(`[Batch Error] totalRecordsToProcess is invalid: ${totalRecordsToProcess}`);
+      await addLog(`ERROR: totalRecordsToProcess is ${totalRecordsToProcess}, fetching from job record`, 'ERROR');
+
+      // Re-fetch job to get the latest total_records
+      const [currentJob] = await db.select().from(jobs).where(eq(jobs.id, jobId));
+      totalRecordsToProcess = currentJob?.total_records || 0;
+
+      if (totalRecordsToProcess === 0) {
+        // If still 0, assume we need to continue processing
+        console.error(`[Batch Error] total_records is still 0 after re-fetch, continuing processing`);
+        await addLog(`WARNING: total_records is 0, continuing to next batch`, 'ERROR');
+        setTimeout(() => processBatch(jobId, 0), 1000);
+        return;
+      }
+    }
+
+    if (totalRecordsToProcess > 0 && newProcessed + newFailed >= totalRecordsToProcess) {
       const details = `Completed: ${newProcessed} processed, ${newFailed} failed | Pass1: ${newPass1Cleaned} clean (${Math.round((newPass1Cleaned / newProcessed) * 100)}%), Pass2: ${newPass2Processed} AI (${Math.round((newPass2Processed / newProcessed) * 100)}%)`;
       await db.update(jobs).set({
         status: 'completed',

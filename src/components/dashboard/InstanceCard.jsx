@@ -17,6 +17,7 @@ import {
   Zap,
   Loader2, // Import Loader2 for spinner
   Search, // Import Search Icon
+  BarChart3, // Import BarChart3 for Content Analysis
 } from "lucide-react";
 import {
     DropdownMenu,
@@ -28,7 +29,7 @@ import {
 export default function InstanceCard({
   instance,
   onToggleStatus,
-  onExecute, // This function will now accept an argument (isDryRun: boolean)
+  onExecute, // This function will now accept an argument (executionType: string)
   onEdit,
   onDelete,
   isDryRunLoading, // Receive loading state
@@ -218,10 +219,13 @@ export default function InstanceCard({
                         </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent>
-                        <DropdownMenuItem onClick={() => onExecute(true)} disabled={isDryRunLoading}>
+                        <DropdownMenuItem onClick={() => onExecute('dry-run')} disabled={isDryRunLoading}>
                             <Bot className="w-4 h-4 mr-2" /> Dry Run (Test)
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onExecute(false)} className="text-red-600 focus:text-red-600" disabled={isDryRunLoading}>
+                        <DropdownMenuItem onClick={() => onExecute('content-analysis')} disabled={isDryRunLoading}>
+                            <BarChart3 className="w-4 h-4 mr-2" /> Content Analysis
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onExecute('full-execution')} className="text-red-600 focus:text-red-600" disabled={isDryRunLoading}>
                             <Zap className="w-4 h-4 mr-2" /> Full Execution
                         </DropdownMenuItem>
                     </DropdownMenuContent>

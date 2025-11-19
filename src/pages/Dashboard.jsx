@@ -13,6 +13,7 @@ import StatsOverview from "../components/dashboard/StatsOverview";
 import InstanceCard from "../components/dashboard/InstanceCard";
 import CreateInstanceDialog from "../components/dashboard/CreateInstanceDialog";
 import DryRunResultDialog from "../components/dashboard/DryRunResultDialog";
+import ContentAnalysisDialog from "../components/dashboard/ContentAnalysisDialog";
 
 
 export default function Dashboard() {
@@ -26,6 +27,11 @@ export default function Dashboard() {
   const [dryRunResults, setDryRunResults] = useState(null);
   const [dryRunError, setDryRunError] = useState(null);
   const [isDryRunOpen, setIsDryRunOpen] = useState(false);
+
+  const [isContentAnalysisLoading, setIsContentAnalysisLoading] = useState(false);
+  const [contentAnalysisResults, setContentAnalysisResults] = useState(null);
+  const [contentAnalysisError, setContentAnalysisError] = useState(null);
+  const [isContentAnalysisOpen, setIsContentAnalysisOpen] = useState(false);
 
   const { toast } = useToast();
 
@@ -183,6 +189,13 @@ export default function Dashboard() {
           error={dryRunError}
           isLoading={isDryRunLoading}
         />
+        <ContentAnalysisDialog
+          open={isContentAnalysisOpen}
+          onOpenChange={setIsContentAnalysisOpen}
+          results={contentAnalysisResults}
+          error={contentAnalysisError}
+          isLoading={isContentAnalysisLoading}
+        />
       </div>
     </div>
   );
@@ -236,8 +249,8 @@ export default function Dashboard() {
     }
   }
 
-  async function handleExecute(instance, isDryRun) {
-    if (isDryRun) {
+  async function handleExecute(instance, executionType) {
+    if (executionType === 'dry-run') {
       // Dry run
       setIsDryRunLoading(true);
       setDryRunResults(null);
@@ -275,6 +288,45 @@ export default function Dashboard() {
         });
       } finally {
         setIsDryRunLoading(false);
+      }
+    } else if (executionType === 'content-analysis') {
+      // Content Analysis
+      setIsContentAnalysisLoading(true);
+      setContentAnalysisResults(null);
+      setContentAnalysisError(null);
+      setIsContentAnalysisOpen(true);
+
+      try {
+        const response = await fetch(`${window.location.origin}/api/augmentor/content-analysis`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('base44_access_token') || 'placeholder-token'}`
+          },
+          body: JSON.stringify({ instance_id: instance.id })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Content analysis failed');
+        }
+
+        const result = await response.json();
+        setContentAnalysisResults(result);
+        toast({
+          title: "Content Analysis Complete",
+          description: `Analyzed ${result.stats.total_records} records.`,
+        });
+      } catch (error) {
+        console.error('Content analysis error:', error);
+        setContentAnalysisError(error.message);
+        toast({
+          title: "Content Analysis Failed",
+          description: error.message,
+          variant: "destructive",
+        });
+      } finally {
+        setIsContentAnalysisLoading(false);
       }
     } else {
       // Start full job

@@ -350,6 +350,106 @@ router.post('/dry-run', requireAuth, async (req, res) => {
   }
 });
 
+// Content Analysis - analyze all records' content sizes
+router.post('/content-analysis', requireAuth, async (req, res) => {
+  try {
+    const { instance_id } = req.body;
+
+    if (!instance_id) {
+      return res.status(400).json({ error: 'Missing instance_id' });
+    }
+
+    const db = getDb();
+
+    // Get instance
+    const [instance] = await db
+      .select()
+      .from(databaseInstances)
+      .where(eq(databaseInstances.id, instance_id));
+
+    if (!instance) {
+      return res.status(404).json({ error: 'Instance not found' });
+    }
+
+    if (instance.instance_type !== 'augmentor') {
+      return res.status(400).json({ error: 'Instance is not an augmentor type' });
+    }
+
+    console.log(`Content analysis for instance: ${instance.name}`);
+
+    // Fetch ALL records (no limit) to analyze
+    const queryBody = {
+      collectionName: instance.collection_name,
+      filter: instance.query_filter || '',
+      offset: 0,
+      limit: 16384, // Max limit for Zilliz
+      outputFields: [instance.primary_key_field, instance.target_field]
+    };
+
+    const queryResponse = await zillizApiCall(
+      instance.zilliz_endpoint,
+      instance.zilliz_token,
+      '/v2/vectordb/entities/query',
+      queryBody
+    );
+
+    const records = queryResponse.data || [];
+
+    if (records.length === 0) {
+      return res.status(404).json({ error: 'No records found in collection' });
+    }
+
+    // Analyze content sizes
+    const contentAnalysis = records.map(record => {
+      const content = record[instance.target_field] || '';
+
+      // Check if content has pagecontent tags
+      const tagRegex = /\[pagecontent\](.*?)\[\/pagecontent\]/gs;
+      const match = tagRegex.exec(content);
+      const extractedContent = match ? match[1] : content;
+
+      return {
+        id: record[instance.primary_key_field],
+        total_size: content.length,
+        extracted_size: extractedContent.length,
+        has_tags: !!match,
+        would_truncate: extractedContent.length > MAX_CONTENT_LENGTH,
+        truncated_size: Math.min(extractedContent.length, MAX_CONTENT_LENGTH)
+      };
+    });
+
+    // Sort by extracted_size descending (largest first)
+    contentAnalysis.sort((a, b) => b.extracted_size - a.extracted_size);
+
+    // Calculate statistics
+    const stats = {
+      total_records: contentAnalysis.length,
+      avg_size: Math.round(contentAnalysis.reduce((sum, r) => sum + r.extracted_size, 0) / contentAnalysis.length),
+      min_size: Math.min(...contentAnalysis.map(r => r.extracted_size)),
+      max_size: Math.max(...contentAnalysis.map(r => r.extracted_size)),
+      records_with_tags: contentAnalysis.filter(r => r.has_tags).length,
+      records_would_truncate: contentAnalysis.filter(r => r.would_truncate).length,
+      current_max_length: MAX_CONTENT_LENGTH
+    };
+
+    res.json({
+      success: true,
+      stats,
+      records: contentAnalysis,
+      instance: {
+        id: instance.id,
+        name: instance.name,
+        collection: instance.collection_name,
+        target_field: instance.target_field
+      }
+    });
+
+  } catch (error) {
+    console.error('Content analysis error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 const MAX_BATCH_RETRIES = 3;
 
 // Process a batch (called recursively) - EXPORTED for scheduler

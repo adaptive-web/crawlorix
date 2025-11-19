@@ -1,6 +1,8 @@
 import express from 'express';
 import OpenAI from 'openai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { removeStopwords, eng, fra, deu, spa, ita } from 'stopword';
+import { franc } from 'franc';
 import { getDb, generateId } from '../db/client.js';
 import { databaseInstances, jobs, jobLogs } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
@@ -12,6 +14,72 @@ const BATCH_SIZE = 5; // Increased from 2 for better performance on Railway
 const MAX_CONTENT_LENGTH = 8000; // Reduced from 12000 for faster processing
 const OPENAI_TIMEOUT = 120000; // 120 seconds
 const MAX_RETRIES = 3;
+const CLEAN_THRESHOLD = 0.15; // If <15% of content remains after stopword removal, consider it "clean"
+
+// Language code to stopword library mapping
+const STOPWORD_LIBS = {
+  en: eng,
+  fr: fra,
+  de: deu,
+  es: spa,
+  it: ita
+};
+
+// Pass 1: Programmatic language filtering using stopwords
+function removeLanguageWords(text, languagesToRemove = ['en']) {
+  if (!text || text.trim().length === 0) {
+    return { cleanedText: '', stats: { original: 0, cleaned: 0, removed: 0, percentRemaining: 0 } };
+  }
+
+  const originalLength = text.length;
+
+  // Tokenize text into words (simple split by whitespace and punctuation)
+  const words = text.toLowerCase().match(/\b[\w']+\b/g) || [];
+  const originalWordCount = words.length;
+
+  // Collect all stopword lists for requested languages
+  const stopwordLists = [];
+  for (const lang of languagesToRemove) {
+    if (STOPWORD_LIBS[lang]) {
+      stopwordLists.push(STOPWORD_LIBS[lang]);
+    }
+  }
+
+  // Combine all stopword lists
+  const combinedStopwords = [].concat(...stopwordLists);
+
+  // Remove stopwords
+  const cleanedWords = removeStopwords(words, combinedStopwords);
+
+  // Reconstruct text by removing matching words from original
+  let cleanedText = text;
+  const removedWords = words.filter(w => !cleanedWords.includes(w));
+
+  // Remove each stopword from the original text (case-insensitive)
+  for (const word of removedWords) {
+    const regex = new RegExp(`\\b${word}\\b`, 'gi');
+    cleanedText = cleanedText.replace(regex, '');
+  }
+
+  // Clean up extra whitespace
+  cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
+
+  const cleanedLength = cleanedText.length;
+  const percentRemaining = originalLength > 0 ? cleanedLength / originalLength : 0;
+
+  return {
+    cleanedText,
+    stats: {
+      original: originalLength,
+      originalWords: originalWordCount,
+      cleaned: cleanedLength,
+      cleanedWords: cleanedWords.length,
+      removed: originalLength - cleanedLength,
+      removedWords: originalWordCount - cleanedWords.length,
+      percentRemaining: Math.round(percentRemaining * 100) / 100
+    }
+  };
+}
 
 // Utility functions
 function sleep(ms) {

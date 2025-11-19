@@ -634,64 +634,112 @@ export async function processBatch(jobId, currentRetry = 0) {
       return;
     }
 
-    // Process batch with AI
-    const batchPrompts = records.map((record, idx) => {
+    // ===== TWO-PASS PROCESSING =====
+    // Pass 1: Programmatic language filtering (FREE, INSTANT)
+    // Pass 2: AI refinement for remaining content (PAID, only if needed)
+
+    const enableTwoPass = instance.enable_two_pass !== false; // Default to true
+    const languagesToRemove = (instance.languages_to_remove || 'en').split(',').map(l => l.trim());
+
+    await addLog(`Two-pass processing: ${enableTwoPass ? 'ENABLED' : 'DISABLED'}`);
+    await addLog(`Languages to remove: ${languagesToRemove.join(', ')}`);
+
+    // Prepare records and run Pass 1
+    const recordsWithPass1 = records.map((record, idx) => {
       let content = record[instance.target_field] || '';
       const tagRegex = /\[pagecontent\](.*?)\[\/pagecontent\]/gs;
       const match = tagRegex.exec(content);
-      if (match) {
+      const hasTag = !!match;
+      if (hasTag) {
         content = match[1];
       }
 
+      // Truncate if too large (safety limit)
       if (content.length > MAX_CONTENT_LENGTH) {
         content = content.substring(0, MAX_CONTENT_LENGTH);
       }
 
-      const promptWithContent = instance.prompt.replace(/\{\{FIELD_VALUE\}\}/g, content);
-      return `[RECORD ${idx + 1}]\n${promptWithContent}`;
-    });
+      // Run Pass 1: Remove target language sentences
+      let pass1Result = null;
+      let needsAI = true;
 
-    const combinedPrompt = batchPrompts.join('\n\n---\n\n');
-
-    // Log detailed content info for debugging
-    const contentSizes = records.map((record, idx) => {
-      const content = record[instance.target_field] || '';
-      return `R${idx + 1}:${content.length}ch`;
-    });
-    await addLog(`Content sizes: [${contentSizes.join(', ')}], Combined: ${combinedPrompt.length} chars`);
-    await addLog(`Content preview: ${combinedPrompt.substring(0, 200)}...`);
-    await addLog(`Sending batch to ${instance.generative_model_name} for processing...`);
-
-    let aiResponses = [];
-    try {
-      const aiResult = await withTimeout(
-        withRetry(async () => {
-          return await callAIService(
-            instance.generative_model_name,
-            [
-              { role: 'system', content: 'Process each record separately. Return responses in the format: [RECORD X]\n<processed content>' },
-              { role: 'user', content: combinedPrompt }
-            ],
-            0.3
-          );
-        }),
-        OPENAI_TIMEOUT,
-        'AI processing timeout - batch may be too large or service is slow'
-      );
-
-      const fullResponse = aiResult.choices[0].message.content;
-      const recordResponses = fullResponse.split(/\[RECORD \d+\]/);
-      aiResponses = recordResponses.slice(1).map(r => r.trim());
-
-      if (aiResponses.length !== records.length) {
-        throw new Error(`AI returned ${aiResponses.length} responses but expected ${records.length}`);
+      if (enableTwoPass) {
+        pass1Result = removeLanguageSentences(content, languagesToRemove);
+        needsAI = pass1Result.stats.percentRemaining > CLEAN_THRESHOLD;
       }
 
-      await addLog(`AI processing completed for ${aiResponses.length} records`);
+      return {
+        record,
+        idx,
+        originalContent: content,
+        hasTag,
+        pass1Result,
+        needsAI: enableTwoPass ? needsAI : true,
+        pass1Cleaned: enableTwoPass ? !needsAI : false
+      };
+    });
 
-    } catch (batchError) {
-      // Retry batch processing if we haven't hit max retries
-      if (currentRetry < MAX_BATCH_RETRIES) {
+    // Separate into clean (Pass 1 only) and AI-needed records
+    const cleanRecords = recordsWithPass1.filter(r => r.pass1Cleaned);
+    const aiNeededRecords = recordsWithPass1.filter(r => r.needsAI);
+
+    await addLog(`Pass 1 complete: ${cleanRecords.length} clean (no AI needed), ${aiNeededRecords.length} need AI refinement`);
+
+    // Log detailed content info
+    const contentSizes = recordsWithPass1.map(r =>
+      `R${r.idx + 1}:${r.originalContent.length}ch${r.pass1Cleaned ? '✓' : '→AI'}`
+    );
+    await addLog(`Content sizes: [${contentSizes.join(', ')}]`);
+
+    // ===== PASS 2: AI PROCESSING (only for records that need it) =====
+    const aiResponsesByIdx = {}; // Map idx -> AI response
+
+    if (aiNeededRecords.length > 0) {
+      await addLog(`Sending ${aiNeededRecords.length} records to ${instance.generative_model_name} for Pass 2 AI refinement...`);
+
+      const batchPrompts = aiNeededRecords.map((r, batchIdx) => {
+        const contentForAI = enableTwoPass ? r.pass1Result.cleanedText : r.originalContent;
+        const promptWithContent = instance.prompt.replace(/\{\{FIELD_VALUE\}\}/g, contentForAI);
+        return `[RECORD ${batchIdx + 1}]\n${promptWithContent}`;
+      });
+
+      const combinedPrompt = batchPrompts.join('\n\n---\n\n');
+      await addLog(`Pass 2 combined prompt: ${combinedPrompt.length} chars`);
+
+      try {
+        const aiResult = await withTimeout(
+          withRetry(async () => {
+            return await callAIService(
+              instance.generative_model_name,
+              [
+                { role: 'system', content: 'Process each record separately. Return responses in the format: [RECORD X]\n<processed content>' },
+                { role: 'user', content: combinedPrompt }
+              ],
+              0.3
+            );
+          }),
+          OPENAI_TIMEOUT,
+          'AI processing timeout - batch may be too large or service is slow'
+        );
+
+        const fullResponse = aiResult.choices[0].message.content;
+        const recordResponses = fullResponse.split(/\[RECORD \d+\]/);
+        const aiResponses = recordResponses.slice(1).map(r => r.trim());
+
+        if (aiResponses.length !== aiNeededRecords.length) {
+          throw new Error(`AI returned ${aiResponses.length} responses but expected ${aiNeededRecords.length}`);
+        }
+
+        // Map AI responses back to original indices
+        aiNeededRecords.forEach((r, batchIdx) => {
+          aiResponsesByIdx[r.idx] = aiResponses[batchIdx];
+        });
+
+        await addLog(`Pass 2 complete: AI processed ${aiResponses.length} records`);
+
+      } catch (batchError) {
+        // Retry batch processing if we haven't hit max retries
+        if (currentRetry < MAX_BATCH_RETRIES) {
         await addLog(`Batch AI processing failed: ${batchError.message}. Retrying (${currentRetry + 1}/${MAX_BATCH_RETRIES})...`, 'ERROR');
 
         await db.update(jobs).set({
@@ -723,53 +771,84 @@ export async function processBatch(jobId, currentRetry = 0) {
       await addLog('Moving to next batch');
       setTimeout(() => processBatch(jobId, 0), 1000);
       return;
+      }
+    } else {
+      await addLog('No AI processing needed - all records cleaned by Pass 1');
     }
 
-    // Generate all embeddings in parallel for speed
-    let embeddingsByIndex = {};
+    // ===== GENERATE EMBEDDINGS =====
+    // Generate embeddings for final processed content (Pass 1 or Pass 2 results)
+    let embeddingsByIdx = {};
     if (instance.vector_field_name) {
       await addLog('Generating embeddings for all records in parallel...');
 
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const embeddingPromises = aiResponses.map(async (processedContent, idx) => {
+      const embeddingPromises = recordsWithPass1.map(async (r) => {
+        // Get final content: AI result if available, otherwise Pass 1 result or original
+        let finalContent;
+        if (aiResponsesByIdx[r.idx]) {
+          finalContent = aiResponsesByIdx[r.idx];
+        } else if (r.pass1Result) {
+          finalContent = r.pass1Result.cleanedText;
+        } else {
+          finalContent = r.originalContent;
+        }
+
         try {
           const embeddingResult = await withTimeout(
             withRetry(async () => {
               return await openai.embeddings.create({
                 model: instance.embedding_model_name,
-                input: processedContent
+                input: finalContent
               });
             }),
             60000,
             'Embedding generation timeout'
           );
-          return { idx, embedding: embeddingResult.data[0].embedding };
+          return { idx: r.idx, embedding: embeddingResult.data[0].embedding };
         } catch (error) {
-          console.error(`Embedding failed for record ${idx}:`, error);
-          return { idx, embedding: null, error: error.message };
+          console.error(`Embedding failed for record ${r.idx}:`, error);
+          return { idx: r.idx, embedding: null, error: error.message };
         }
       });
 
       const embeddingResults = await Promise.all(embeddingPromises);
       embeddingResults.forEach(result => {
-        embeddingsByIndex[result.idx] = result.embedding;
+        embeddingsByIdx[result.idx] = result.embedding;
       });
 
       await addLog(`Generated ${embeddingResults.filter(r => r.embedding).length} embeddings`);
     }
 
-    // Process each record
+    // ===== UPDATE RECORDS IN ZILLIZ =====
     let successCount = 0;
     let failCount = 0;
+    let pass1CleanedCount = 0;
+    let pass2ProcessedCount = 0;
 
-    for (let i = 0; i < records.length; i++) {
-      const record = records[i];
-      const processedContent = aiResponses[i];
+    for (const r of recordsWithPass1) {
+      const record = r.record;
       const recordId = record[instance.primary_key_field];
 
-      await addLog(`Record ${recordId}: Processing...`);
+      await addLog(`Record ${recordId}: Updating...`);
 
       try {
+        // Determine final processed content
+        let processedContent;
+        if (aiResponsesByIdx[r.idx]) {
+          // Pass 2: AI processed
+          processedContent = aiResponsesByIdx[r.idx];
+          pass2ProcessedCount++;
+        } else if (r.pass1Result) {
+          // Pass 1: Cleaned programmatically
+          processedContent = r.pass1Result.cleanedText;
+          pass1CleanedCount++;
+        } else {
+          // No processing (two-pass disabled)
+          processedContent = r.originalContent;
+        }
+
+        // Reconstruct with tags if original had them
         let updatedContent = processedContent;
         const originalContent = record[instance.target_field] || '';
         const tagRegex = /\[pagecontent\](.*?)\[\/pagecontent\]/gs;
@@ -781,14 +860,14 @@ export async function processBatch(jobId, currentRetry = 0) {
         const updatedRecord = {
           ...record,
           [instance.target_field]: updatedContent,
-          changed_flag: 'done' // Mark as processed so it won't be picked up again
+          changed_flag: 'done' // Mark as processed
         };
 
         // Add pre-generated embedding
         if (instance.vector_field_name) {
-          if (embeddingsByIndex[i]) {
-            updatedRecord[instance.vector_field_name] = embeddingsByIndex[i];
-            await addLog(`Record ${recordId}: Embedding added (${embeddingsByIndex[i].length} dims)`);
+          if (embeddingsByIdx[r.idx]) {
+            updatedRecord[instance.vector_field_name] = embeddingsByIdx[r.idx];
+            await addLog(`Record ${recordId}: Embedding added (${embeddingsByIdx[r.idx].length} dims)`);
           } else {
             throw new Error('Embedding generation failed for this record');
           }
@@ -825,31 +904,41 @@ export async function processBatch(jobId, currentRetry = 0) {
       }
     }
 
-    // Update job progress
+    // Update job progress with two-pass statistics
     const newOffset = job.current_batch_offset + records.length;
     const newProcessed = job.processed_records + successCount;
     const newFailed = job.failed_records + failCount;
+    const newPass1Processed = (job.pass1_processed || 0) + records.length;
+    const newPass1Cleaned = (job.pass1_cleaned || 0) + pass1CleanedCount;
+    const newPass2Needed = (job.pass2_needed || 0) + pass2ProcessedCount;
+    const newPass2Processed = (job.pass2_processed || 0) + pass2ProcessedCount;
 
     await db.update(jobs).set({
       current_batch_offset: newOffset,
       processed_records: newProcessed,
       failed_records: newFailed,
+      pass1_processed: newPass1Processed,
+      pass1_cleaned: newPass1Cleaned,
+      pass2_needed: newPass2Needed,
+      pass2_processed: newPass2Processed,
       last_batch_at: new Date(),
       is_processing_batch: false, // Clear flag so next batch can start
       updated_date: new Date()
     }).where(eq(jobs.id, jobId));
 
-    await addLog(`Batch complete: ${successCount} succeeded, ${failCount} failed`);
+    await addLog(`Batch complete: ${successCount} succeeded, ${failCount} failed | Pass1: ${pass1CleanedCount} clean, Pass2: ${pass2ProcessedCount} AI`);
     console.log(`[Batch] Job ${jobId} - Batch complete. New offset: ${newOffset}, Processed: ${newProcessed}/${job.total_records}`);
 
     // Check if we're done
     if (newProcessed + newFailed >= job.total_records) {
+      const details = `Completed: ${newProcessed} processed, ${newFailed} failed | Pass1: ${newPass1Cleaned} clean (${Math.round((newPass1Cleaned / newProcessed) * 100)}%), Pass2: ${newPass2Processed} AI (${Math.round((newPass2Processed / newProcessed) * 100)}%)`;
       await db.update(jobs).set({
         status: 'completed',
-        details: `Completed: ${newProcessed} processed, ${newFailed} failed`,
+        details,
         updated_date: new Date()
       }).where(eq(jobs.id, jobId));
       await addLog(`Job completed: ${newProcessed} records processed, ${newFailed} failed`);
+      await addLog(`Two-pass summary: Pass1 cleaned ${newPass1Cleaned} (${Math.round((newPass1Cleaned / newProcessed) * 100)}%), Pass2 AI ${newPass2Processed} (${Math.round((newPass2Processed / newProcessed) * 100)}%)`);
       console.log(`[Batch] Job ${jobId} - COMPLETED. Total: ${newProcessed} processed, ${newFailed} failed`);
       return;
     }

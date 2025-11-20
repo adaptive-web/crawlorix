@@ -741,6 +741,8 @@ const MAX_BATCH_RETRIES = 3;
 // Process a batch (called recursively) - EXPORTED for scheduler
 export async function processBatch(jobId, currentRetry = 0) {
   const db = getDb();
+  const batchStartTime = Date.now();
+  const BATCH_TIMEOUT_MS = 240000; // 4 minutes (safe margin under Railway's 5 min timeout)
 
   try {
     console.log(`[Batch] ===== Processing job ${jobId} (retry ${currentRetry}/${MAX_BATCH_RETRIES}) =====`);
@@ -1173,11 +1175,32 @@ export async function processBatch(jobId, currentRetry = 0) {
       }
     }
 
+    // ===== CHECK RAILWAY TIMEOUT =====
+    // Check if we're approaching Railway's timeout limit
+    const elapsedTime = Date.now() - batchStartTime;
+    if (elapsedTime > BATCH_TIMEOUT_MS) {
+      await addLog(`Approaching Railway timeout (${Math.round(elapsedTime/1000)}s elapsed) - scheduling next batch to avoid timeout`);
+      console.log(`[Batch] Job ${jobId} - Approaching Railway timeout, continuing in next batch`);
+
+      // Update job state and schedule next batch
+      await db.update(jobs)
+        .set({
+          is_processing_batch: false,
+          last_batch_at: new Date(),
+          updated_date: new Date()
+        })
+        .where(eq(jobs.id, jobId));
+
+      setTimeout(() => processBatch(jobId, 0), 1000);
+      return;
+    }
+
     // ===== UPDATE RECORDS IN ZILLIZ =====
     let successCount = 0;
     let failCount = 0;
     let pass1CleanedCount = 0;
     let pass2ProcessedCount = 0;
+    let failedRecordDetails = []; // Track failed records for retry
 
     for (const r of recordsWithPass1) {
       const record = r.record;
@@ -1257,6 +1280,13 @@ export async function processBatch(jobId, currentRetry = 0) {
       } catch (error) {
         failCount++;
         await addLog(`Record ${recordId}: ✗ Failed - ${error.message}`, 'ERROR');
+
+        // Track failed record for potential retry
+        failedRecordDetails.push({
+          recordId,
+          error: error.message,
+          contentSize: (processedContent || '').length
+        });
       }
     }
 
@@ -1283,6 +1313,13 @@ export async function processBatch(jobId, currentRetry = 0) {
     }).where(eq(jobs.id, jobId));
 
     await addLog(`Batch complete: ${successCount} succeeded, ${failCount} failed | Pass1: ${pass1CleanedCount} clean, Pass2: ${pass2ProcessedCount} AI`);
+
+    // Log failed records summary if any
+    if (failedRecordDetails.length > 0) {
+      await addLog(`Failed records: ${failedRecordDetails.map(f => f.recordId).join(', ')}`);
+      await addLog(`Consider retry for large content failures (${failedRecordDetails.filter(f => f.contentSize > 15000).length} records > 15k chars)`);
+    }
+
     console.log(`[Batch] Job ${jobId} - Batch complete. New offset: ${newOffset}, Processed: ${newProcessed}/${totalRecordsToProcess}`);
 
     // Debug logging for batch continuation issue
@@ -1316,7 +1353,19 @@ export async function processBatch(jobId, currentRetry = 0) {
       }).where(eq(jobs.id, jobId));
       await addLog(`Job completed: ${newProcessed} records processed, ${newFailed} failed`);
       await addLog(`Two-pass summary: Pass1 cleaned ${newPass1Cleaned} (${Math.round((newPass1Cleaned / newProcessed) * 100)}%), Pass2 AI ${newPass2Processed} (${Math.round((newPass2Processed / newProcessed) * 100)}%)`);
-      console.log(`[Batch] Job ${jobId} - COMPLETED. Total: ${newProcessed} processed, ${newFailed} failed`);
+
+      // Final summary with recommendations
+      const successRate = Math.round((newProcessed / (newProcessed + newFailed)) * 100);
+      await addLog(`Success rate: ${successRate}% (${newProcessed}/${newProcessed + newFailed})`);
+
+      if (newFailed > 0) {
+        await addLog(`💡 Recommendation: ${newFailed} records failed. Consider:`);
+        await addLog(`- Running job again with changed_flag != "done" filter to retry failures`);
+        await addLog(`- Check logs for timeout errors (may need longer timeouts)`);
+        await addLog(`- Verify Gemini API quotas and rate limits`);
+      }
+
+      console.log(`[Batch] Job ${jobId} - COMPLETED. Total: ${newProcessed} processed, ${newFailed} failed (${successRate}% success rate)`);
       return;
     }
 

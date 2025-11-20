@@ -224,8 +224,8 @@ export default function Dashboard() {
       toast({
         title: editingInstance ? "✅ Updated" : "✅ Created",
         description: editingInstance
-          ? `${formData.name} configuration updated successfully`
-          : `${formData.name} instance created and ready to use`,
+          ? `${instanceData.name} configuration updated successfully`
+          : `${instanceData.name} instance created and ready to use`,
         duration: 3000,
       });
     } catch (error) {

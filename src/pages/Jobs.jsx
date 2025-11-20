@@ -60,11 +60,15 @@ export default function JobsPage() {
         setIsAuthenticated(false);
       } else {
         setError(error.message || "Failed to load jobs. Please refresh the page.");
-        toast({
-          title: "Error Loading Jobs",
-          description: error.message || "Failed to load jobs",
-          variant: "destructive",
-        });
+        // Only show toast for non-polling errors
+        if (!isPolling) {
+          toast({
+            title: "⚠️ Connection Issue",
+            description: "Unable to load job status. The page will retry automatically.",
+            variant: "destructive",
+            duration: 5000,
+          });
+        }
       }
     } finally {
         setIsLoading(false);
@@ -102,16 +106,18 @@ export default function JobsPage() {
     try {
       await jobsApi.cancel(jobId);
       toast({
-        title: "Job Cancelled",
-        description: "The job will stop after completing its current batch.",
+        title: "🛑 Stopping Job",
+        description: "Processing will stop after the current batch completes.",
+        duration: 4000,
       });
       loadData(true);
     } catch (error) {
       console.error("Failed to cancel job:", error);
       toast({
-        title: "Error",
-        description: "Could not cancel the job. " + error.message,
+        title: "❌ Cannot Stop Job",
+        description: error.message || "Unable to cancel. Please try again.",
         variant: "destructive",
+        duration: 6000,
       });
     }
   };

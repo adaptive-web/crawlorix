@@ -72,9 +72,10 @@ export default function Dashboard() {
         setInstances([]);
       } else {
         toast({
-          title: "Error",
-          description: error.message,
+          title: "❌ Connection Error",
+          description: "Unable to load instances. Check your connection and refresh.",
           variant: "destructive",
+          duration: 7000,
         });
         setInstances([]);
       }
@@ -221,15 +222,19 @@ export default function Dashboard() {
       setEditingInstance(null);
       loadData();
       toast({
-        title: "Success",
-        description: editingInstance ? "Instance updated" : "Instance created",
+        title: editingInstance ? "✅ Updated" : "✅ Created",
+        description: editingInstance
+          ? `${formData.name} configuration updated successfully`
+          : `${formData.name} instance created and ready to use`,
+        duration: 3000,
       });
     } catch (error) {
       console.error("Error saving instance:", error);
       toast({
-        title: "Error",
-        description: error.message,
+        title: "❌ Save Failed",
+        description: error.message || "Could not save instance. Please check your connection and try again.",
         variant: "destructive",
+        duration: 8000,
       });
     }
   }
@@ -242,9 +247,10 @@ export default function Dashboard() {
     } catch (error) {
       console.error("Error updating status:", error);
       toast({
-        title: "Error",
-        description: error.message,
+        title: "❌ Update Failed",
+        description: error.message || "Could not toggle status. Please try again.",
         variant: "destructive",
+        duration: 6000,
       });
     }
   }
@@ -275,16 +281,18 @@ export default function Dashboard() {
         const result = await response.json();
         setDryRunResults(result);
         toast({
-          title: "Dry Run Complete",
-          description: "Review the before/after comparison below.",
+          title: "🔍 Preview Ready",
+          description: "Sample processing complete. Review the before/after comparison below.",
+          duration: 4000,
         });
       } catch (error) {
         console.error('Dry run error:', error);
         setDryRunError(error.message);
         toast({
-          title: "Dry Run Failed",
-          description: error.message,
+          title: "❌ Preview Failed",
+          description: error.message || "Could not generate preview. Check your settings.",
           variant: "destructive",
+          duration: 6000,
         });
       } finally {
         setIsDryRunLoading(false);
@@ -314,16 +322,18 @@ export default function Dashboard() {
         const result = await response.json();
         setContentAnalysisResults(result);
         toast({
-          title: "Content Analysis Complete",
-          description: `Analyzed ${result.stats.total_records} records.`,
+          title: "📊 Analysis Complete",
+          description: `Analyzed ${result.stats.total_records} records. Review the statistics below.`,
+          duration: 4000,
         });
       } catch (error) {
         console.error('Content analysis error:', error);
         setContentAnalysisError(error.message);
         toast({
-          title: "Content Analysis Failed",
-          description: error.message,
+          title: "❌ Analysis Failed",
+          description: error.message || "Could not analyze content. Please try again.",
           variant: "destructive",
+          duration: 6000,
         });
       } finally {
         setIsContentAnalysisLoading(false);
@@ -347,16 +357,18 @@ export default function Dashboard() {
 
         const result = await response.json();
         toast({
-          title: "Job Started",
-          description: `Job ${result.job_id} is now running. Check the Jobs page for progress.`,
+          title: "✅ Processing Started",
+          description: `Augmenting ${instance.collection_name} collection. Processing will continue in the background.`,
+          duration: 3000,
         });
         loadData();
       } catch (error) {
         console.error('Start job error:', error);
         toast({
-          title: "Error",
-          description: error.message,
+          title: "❌ Failed to Start",
+          description: error.message || "Could not start processing. Please check your configuration.",
           variant: "destructive",
+          duration: 8000,
         });
       }
     }
@@ -368,15 +380,17 @@ export default function Dashboard() {
         await instancesApi.delete(instance.id);
         loadData();
         toast({
-          title: "Success",
-          description: "Instance deleted",
+          title: "🗑️ Deleted",
+          description: `${instance.name} has been removed`,
+          duration: 3000,
         });
       } catch (error) {
         console.error("Error deleting instance:", error);
         toast({
-          title: "Error",
-          description: error.message,
+          title: "❌ Delete Failed",
+          description: error.message || "Could not delete instance. Please try again.",
           variant: "destructive",
+          duration: 6000,
         });
       }
     }

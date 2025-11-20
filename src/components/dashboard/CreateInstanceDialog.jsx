@@ -44,7 +44,7 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
     zilliz_token: '',
     collection_name: '',
     primary_key_field: 'id',
-    query_filter: '',
+    query_filter: 'changed_flag != "done"',
     target_field: '',
     vector_field_name: '',
     ai_operation: 'strip_english',
@@ -272,11 +272,11 @@ export default function CreateInstanceDialog({ open, onOpenChange, onSave, initi
                     id="query_filter"
                     value={formData.query_filter}
                     onChange={(e) => handleChange('query_filter', e.target.value)}
-                    placeholder='e.g., langcode == "en" or content != ""'
+                    placeholder='e.g., changed_flag != "done" && langcode == "en"'
                     required={instanceType === 'augmentor'}
                   />
                   <p className="text-xs text-slate-500 mt-2">
-                    Use Zilliz filter syntax. <strong>Note:</strong> String values must be in double quotes (e.g., `field == "value"`).
+                    Use Zilliz filter syntax. <strong>Important:</strong> Include <code>changed_flag != "done"</code> to avoid reprocessing completed records. String values must use double quotes.
                   </p>
                 </div>
               )}

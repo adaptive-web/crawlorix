@@ -59,7 +59,7 @@ export default function LogViewer({ jobId }) {
                     {getIcon(log.level)}
                     <div className="flex-1">
                         <span className="text-slate-500 font-mono">
-                            {format(parseISO(log.created_date), 'HH:mm:ss')}
+                            {format(parseISO(log.created_date), 'MMM dd, HH:mm:ss')}
                         </span>
                         <span className="ml-2 text-slate-700">{log.message}</span>
                     </div>

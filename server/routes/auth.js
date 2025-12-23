@@ -12,14 +12,40 @@ router.get('/google',
 
 // Google OAuth callback
 router.get('/google/callback',
-  passport.authenticate('google', {
-    failureRedirect: '/login.html?error=auth_failed',
-    failureMessage: true
-  }),
-  (req, res) => {
-    console.log('Auth successful for user:', req.user?.email);
-    // Successful authentication, redirect to dashboard
-    res.redirect('/');
+  (req, res, next) => {
+    console.log('[Auth Callback] Starting authentication...');
+    passport.authenticate('google', (err, user, info) => {
+      console.log('[Auth Callback] Result - err:', err, 'user:', user?.email, 'info:', info);
+      
+      if (err) {
+        console.error('[Auth Callback] Error:', err);
+        return res.redirect('/login.html?error=auth_error');
+      }
+      
+      if (!user) {
+        console.log('[Auth Callback] No user returned, info:', info);
+        return res.redirect('/login.html?error=no_user');
+      }
+      
+      req.logIn(user, (loginErr) => {
+        if (loginErr) {
+          console.error('[Auth Callback] Login error:', loginErr);
+          return res.redirect('/login.html?error=login_error');
+        }
+        
+        console.log('[Auth Callback] Login successful, session:', req.sessionID, 'user:', req.user?.email);
+        console.log('[Auth Callback] isAuthenticated:', req.isAuthenticated());
+        
+        // Save session explicitly before redirect
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error('[Auth Callback] Session save error:', saveErr);
+          }
+          console.log('[Auth Callback] Session saved, redirecting to /');
+          res.redirect('/');
+        });
+      });
+    })(req, res, next);
   }
 );
 

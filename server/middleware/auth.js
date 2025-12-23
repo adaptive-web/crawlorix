@@ -1,8 +1,12 @@
 // Authentication middleware using Google OAuth via Passport
 
 export function requireAuth(req, res, next) {
+  // Debug logging
+  console.log(`[Auth] Path: ${req.path}, isAuthenticated: ${req.isAuthenticated?.()}, sessionID: ${req.sessionID}, user: ${req.user?.email || 'none'}`);
+  
   // Check if user is authenticated via Passport session
   if (!req.isAuthenticated || !req.isAuthenticated()) {
+    console.log(`[Auth] Not authenticated - session data:`, req.session);
     // For API requests, return JSON error
     if (req.path.startsWith('/api/')) {
       return res.status(401).json({

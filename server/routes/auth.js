@@ -1,76 +1,52 @@
 import express from 'express';
 import passport from 'passport';
+import { signToken, setAuthCookie, clearAuthCookie, verifyToken } from '../lib/jwt.js';
 
 const router = express.Router();
 
 // Initiate Google OAuth login
 router.get('/google',
   passport.authenticate('google', {
-    scope: ['profile', 'email']
+    scope: ['profile', 'email'],
+    session: false
   })
 );
 
 // Google OAuth callback
 router.get('/google/callback',
-  (req, res, next) => {
-    const isProduction = process.env.NODE_ENV === 'production';
-    
-    passport.authenticate('google', (err, user, info) => {
-      if (!isProduction) {
-        console.log('[Auth Callback] Result - user:', user?.email, 'info:', info);
-      }
-      
-      if (err) {
-        console.error('[Auth Callback] Error:', err);
-        return res.redirect('/login.html?error=auth_error');
-      }
-      
-      if (!user) {
-        // Log domain restriction failures
-        if (info?.message?.includes('adaptive.co.uk')) {
-          console.log('[Auth Callback] Domain restriction - rejected email');
-        }
-        return res.redirect('/login.html?error=access_denied');
-      }
-      
-      req.logIn(user, (loginErr) => {
-        if (loginErr) {
-          console.error('[Auth Callback] Login error:', loginErr);
-          return res.redirect('/login.html?error=login_error');
-        }
-        
-        // Save session explicitly before redirect
-        req.session.save((saveErr) => {
-          if (saveErr) {
-            console.error('[Auth Callback] Session save error:', saveErr);
-            return res.redirect('/login.html?error=session_error');
-          }
-          res.redirect('/');
-        });
-      });
-    })(req, res, next);
+  passport.authenticate('google', {
+    failureRedirect: '/login.html?error=access_denied',
+    session: false
+  }),
+  (req, res) => {
+    // Create JWT token and set as cookie
+    const token = signToken(req.user);
+    setAuthCookie(res, token);
+    // Redirect to dashboard
+    res.redirect('/');
   }
 );
 
 // Logout route
 router.get('/logout', (req, res) => {
-  req.logout((err) => {
-    if (err) {
-      console.error('Logout error:', err);
-    }
-    req.session.destroy(() => {
-      res.redirect('/');
-    });
-  });
+  clearAuthCookie(res);
+  res.redirect('/login.html');
 });
 
 // Get current user info
 router.get('/user', (req, res) => {
-  if (req.isAuthenticated()) {
-    res.json({ user: req.user });
-  } else {
-    res.status(401).json({ error: 'Not authenticated' });
+  const token = req.cookies?.auth_token;
+  if (!token) {
+    return res.status(401).json({ error: 'Not authenticated' });
   }
+  
+  const user = verifyToken(token);
+  if (!user) {
+    clearAuthCookie(res);
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+  
+  res.json({ user });
 });
 
 export default router;

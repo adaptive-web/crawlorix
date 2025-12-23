@@ -10,32 +10,16 @@ export function configurePassport() {
     console.error('FATAL: GOOGLE_CLIENT_SECRET is not set');
   }
   if (!process.env.GOOGLE_CALLBACK_URL) {
-    console.error('FATAL: GOOGLE_CALLBACK_URL is not set - must be full URL like https://crawlorix.href.co.uk/auth/google/callback');
+    console.error('FATAL: GOOGLE_CALLBACK_URL is not set');
   }
 
-  // Serialize user into session
-  passport.serializeUser((user, done) => {
-    done(null, user);
-  });
-
-  // Deserialize user from session
-  passport.deserializeUser((user, done) => {
-    done(null, user);
-  });
-
-  // Configure Google OAuth Strategy
-  // IMPORTANT: callbackURL MUST be a full absolute URL matching Google Cloud Console
-  const callbackURL = process.env.GOOGLE_CALLBACK_URL;
-  if (!callbackURL || !callbackURL.startsWith('http')) {
-    console.error('ERROR: GOOGLE_CALLBACK_URL must be a full URL (e.g., https://crawlorix.href.co.uk/auth/google/callback)');
-  }
-
+  // Configure Google OAuth Strategy (no sessions - using JWT)
   passport.use(
     new GoogleStrategy(
       {
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        callbackURL: callbackURL,
+        callbackURL: process.env.GOOGLE_CALLBACK_URL,
       },
       (accessToken, refreshToken, profile, done) => {
         // Extract email from profile

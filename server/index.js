@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import session from 'express-session';
+import cookieParser from 'cookie-parser';
 import passport from 'passport';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -43,35 +43,13 @@ app.use(cors({
     : 'http://localhost:5173',
   credentials: true
 }));
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Trust proxy for Railway - MUST be before session middleware
-if (process.env.NODE_ENV === 'production') {
-  app.set('trust proxy', 1);
-}
-
-// Session configuration - use SESSION_SECRET or fall back to NEXTAUTH_SECRET
-const sessionSecret = process.env.SESSION_SECRET || process.env.NEXTAUTH_SECRET;
-if (!sessionSecret) {
-  console.error('WARNING: No SESSION_SECRET or NEXTAUTH_SECRET set!');
-}
-app.use(session({
-  secret: sessionSecret || 'fallback-dev-secret-change-in-production',
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    httpOnly: true,
-    sameSite: 'lax',
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
-  }
-}));
-
-// Initialize Passport
+// Initialize Passport (no sessions - using JWT)
 configurePassport();
 app.use(passport.initialize());
-app.use(passport.session());
 
 // Request logging
 app.use((req, res, next) => {

@@ -57,8 +57,9 @@ app.use((req, res, next) => {
   next();
 });
 
-// Authentication Routes
+// Authentication Routes - support both /auth and /api/auth paths
 app.use('/auth', authRouter);
+app.use('/api/auth', authRouter);
 
 // API Routes (protected by auth)
 app.use('/api/instances', requireAuth, instancesRouter);

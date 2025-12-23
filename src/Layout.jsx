@@ -10,7 +10,7 @@ export default function Layout({ children }) {
 
   useEffect(() => {
     // Fetch current user info
-    fetch('/auth/user', { credentials: 'include' })
+    fetch('/api/auth/user', { credentials: 'include' })
       .then(res => res.json())
       .then(data => {
         if (data.user) {
@@ -21,7 +21,7 @@ export default function Layout({ children }) {
   }, []);
 
   const handleLogout = () => {
-    window.location.href = '/auth/logout';
+    window.location.href = '/api/auth/logout';
   };
 
   const navigationItems = [

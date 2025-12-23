@@ -25,7 +25,7 @@ export const AuthProvider = ({ children }) => {
   const checkUserAuth = async () => {
     try {
       setIsLoadingAuth(true);
-      const response = await fetch('/auth/user', {
+      const response = await fetch('/api/auth/user', {
         credentials: 'include'
       });
 
@@ -61,7 +61,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    window.location.href = '/auth/logout';
+    window.location.href = '/api/auth/logout';
   };
 
   const navigateToLogin = () => {

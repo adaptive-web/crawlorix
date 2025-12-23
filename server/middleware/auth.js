@@ -1,7 +1,10 @@
 // Authentication middleware using JWT tokens
 import { verifyToken, clearAuthCookie } from '../lib/jwt.js';
+import { checkUserAppAccess, isUserAdmin } from '../lib/platform-db.js';
 
-export function requireAuth(req, res, next) {
+const APP_ID = 'crawlorix';
+
+export async function requireAuth(req, res, next) {
   const token = req.cookies?.auth_token;
   
   // Check if this is an API request or a page request
@@ -38,6 +41,21 @@ export function requireAuth(req, res, next) {
       error: 'Access denied - Only @adaptive.co.uk email addresses are allowed',
       requiresAuth: true
     });
+  }
+
+  // Check if user has access to this app (admins always have access)
+  const admin = await isUserAdmin(user.email);
+  if (!admin) {
+    const hasAccess = await checkUserAppAccess(user.email, APP_ID);
+    if (!hasAccess) {
+      if (isApiRequest) {
+        return res.status(403).json({
+          error: 'Access denied - You do not have access to this app',
+          requiresAuth: true
+        });
+      }
+      return res.redirect('/no-access.html');
+    }
   }
 
   // Attach user to request

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Access Denied - Crawlorix</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f9fafb;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .card {
+      background: white;
+      padding: 2rem;
+      border-radius: 0.75rem;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+      max-width: 400px;
+      width: 100%;
+      margin: 1rem;
+      text-align: center;
+    }
+    .icon {
+      width: 64px;
+      height: 64px;
+      background: #fef2f2;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1rem;
+    }
+    .icon svg { width: 32px; height: 32px; color: #dc2626; }
+    h1 { font-size: 1.5rem; color: #111827; margin-bottom: 0.5rem; }
+    .message { color: #6b7280; margin-bottom: 1.5rem; }
+    .buttons { display: flex; flex-direction: column; gap: 0.75rem; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.75rem 1rem;
+      border-radius: 0.5rem;
+      font-size: 1rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .btn-primary { background: #3b82f6; color: white; border: none; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+    .btn-secondary:hover { background: #e5e7eb; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+      </svg>
+    </div>
+    <h1>Access Denied</h1>
+    <p class="message">You don't have access to Crawlorix. Please contact an administrator to request access.</p>
+    <div class="buttons">
+      <a href="https://adaptrix.href.co.uk" class="btn btn-primary">Go to Adaptrix</a>
+      <a href="/api/auth/logout" class="btn btn-secondary">Sign Out</a>
+    </div>
+  </div>
+</body>
+</html>

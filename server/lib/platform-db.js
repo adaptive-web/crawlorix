@@ -13,7 +13,7 @@ function getPlatformSql() {
   return _platformSql;
 }
 
-export async function checkUserAppAccess(email, appId) {
+export async function checkUserAppAccess(email, appName) {
   try {
     const sql = getPlatformSql();
     const result = await sql`
@@ -21,7 +21,7 @@ export async function checkUserAppAccess(email, appId) {
       FROM user_app_access uaa
       JOIN users u ON u.id = uaa.user_id
       JOIN apps a ON a.id = uaa.app_id
-      WHERE u.email = ${email} AND a.id = ${appId}
+      WHERE u.email = ${email} AND a.name = ${appName}
     `;
     return result[0]?.has_access ?? false;
   } catch (error) {

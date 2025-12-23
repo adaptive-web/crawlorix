@@ -3,6 +3,7 @@ import { createPageUrl } from "@/utils";
 import { Database, Activity, Zap, LogOut, User } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { AppLauncher } from "@/components/AppLauncher";
 
 export default function Layout({ children }) {
   const location = useLocation();
@@ -41,12 +42,13 @@ export default function Layout({ children }) {
     <div className="min-h-screen flex w-full bg-gradient-to-br from-slate-50 to-blue-50/30">
       <div className="w-64 bg-white/70 backdrop-blur-sm border-r border-slate-200/50 p-6 flex flex-col">
         <div className="flex items-center gap-3 mb-8">
+          <AppLauncher currentApp="crawlorix" />
           <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center shadow-lg">
             <Zap className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h2 className="font-bold text-slate-900 text-lg">ZillizAI</h2>
-            <p className="text-xs text-slate-500 font-medium">powered by NeonDB</p>
+            <h2 className="font-bold text-slate-900 text-lg">Crawlorix</h2>
+            <p className="text-xs text-slate-500 font-medium">Web Crawler</p>
           </div>
         </div>
 

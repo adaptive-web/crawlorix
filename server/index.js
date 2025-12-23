@@ -208,12 +208,17 @@ app.all('/api/admin/fix-gemini-models', async (req, res) => {
 // Serve static files from Vite build (for production)
 if (process.env.NODE_ENV === 'production') {
   const distPath = join(__dirname, '..', 'dist');
+  const publicPath = join(__dirname, '..', 'public');
   
-  // Protect all routes except auth and health
+  // Serve public folder (login page) without auth
+  app.use(express.static(publicPath));
+  
+  // Protect all routes except auth, health, and login
   app.use((req, res, next) => {
-    // Skip auth for auth routes, health check, and static assets
+    // Skip auth for auth routes, health check, login, and static assets
     if (req.path.startsWith('/auth') || 
         req.path === '/health' || 
+        req.path === '/login.html' ||
         req.path.startsWith('/assets/') ||
         req.path.endsWith('.js') ||
         req.path.endsWith('.css') ||

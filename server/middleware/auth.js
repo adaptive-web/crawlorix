@@ -10,8 +10,8 @@ export function requireAuth(req, res, next) {
         requiresAuth: true
       });
     }
-    // For page requests, redirect to login
-    return res.redirect('/auth/google');
+    // For page requests, redirect to login page
+    return res.redirect('/login.html');
   }
 
   // Verify user has @adaptive.co.uk email

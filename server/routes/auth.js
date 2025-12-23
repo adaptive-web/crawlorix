@@ -13,10 +13,11 @@ router.get('/google',
 // Google OAuth callback
 router.get('/google/callback',
   passport.authenticate('google', {
-    failureRedirect: '/login-failed',
+    failureRedirect: '/login.html?error=auth_failed',
     failureMessage: true
   }),
   (req, res) => {
+    console.log('Auth successful for user:', req.user?.email);
     // Successful authentication, redirect to dashboard
     res.redirect('/');
   }

@@ -39,9 +39,13 @@ if (process.env.NODE_ENV === 'production') {
   app.set('trust proxy', 1);
 }
 
-// Session configuration
+// Session configuration - use SESSION_SECRET or fall back to NEXTAUTH_SECRET
+const sessionSecret = process.env.SESSION_SECRET || process.env.NEXTAUTH_SECRET;
+if (!sessionSecret) {
+  console.error('WARNING: No SESSION_SECRET or NEXTAUTH_SECRET set!');
+}
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
+  secret: sessionSecret || 'fallback-dev-secret-change-in-production',
   resave: false,
   saveUninitialized: false,
   cookie: {

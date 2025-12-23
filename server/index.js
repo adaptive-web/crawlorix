@@ -25,9 +25,21 @@ if (process.env.ENABLE_SCHEDULER !== 'false') {
 }
 
 // Middleware
+// CORS - restrict to specific origins in production
+const allowedOrigins = process.env.CORS_ORIGINS 
+  ? process.env.CORS_ORIGINS.split(',') 
+  : ['https://crawlorix.href.co.uk'];
+
 app.use(cors({
   origin: process.env.NODE_ENV === 'production'
-    ? true
+    ? (origin, callback) => {
+        // Allow requests with no origin (mobile apps, curl, etc) or from allowed origins
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      }
     : 'http://localhost:5173',
   credentials: true
 }));
@@ -81,8 +93,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// One-time migration: Update augmentors to GPT-3.5-turbo (allow GET for easy access)
-app.all('/api/admin/update-to-gpt35', async (req, res) => {
+// One-time migration: Update augmentors to GPT-3.5-turbo (protected)
+app.all('/api/admin/update-to-gpt35', requireAuth, async (req, res) => {
   try {
     const { getDb } = await import('./db/client.js');
     const { databaseInstances } = await import('./db/schema.js');
@@ -125,8 +137,8 @@ app.all('/api/admin/update-to-gpt35', async (req, res) => {
   }
 });
 
-// List available Gemini models from Google API
-app.all('/api/admin/list-gemini-models', async (req, res) => {
+// List available Gemini models from Google API (protected)
+app.all('/api/admin/list-gemini-models', requireAuth, async (req, res) => {
   try {
     if (!process.env.GOOGLE_API_KEY) {
       return res.status(400).json({ error: 'GOOGLE_API_KEY not configured' });
@@ -162,8 +174,8 @@ app.all('/api/admin/list-gemini-models', async (req, res) => {
   }
 });
 
-// Fix Gemini model names to use correct API model names
-app.all('/api/admin/fix-gemini-models', async (req, res) => {
+// Fix Gemini model names to use correct API model names (protected)
+app.all('/api/admin/fix-gemini-models', requireAuth, async (req, res) => {
   try {
     const { getDb } = await import('./db/client.js');
     const { databaseInstances } = await import('./db/schema.js');

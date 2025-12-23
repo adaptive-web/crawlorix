@@ -13,9 +13,12 @@ router.get('/google',
 // Google OAuth callback
 router.get('/google/callback',
   (req, res, next) => {
-    console.log('[Auth Callback] Starting authentication...');
+    const isProduction = process.env.NODE_ENV === 'production';
+    
     passport.authenticate('google', (err, user, info) => {
-      console.log('[Auth Callback] Result - err:', err, 'user:', user?.email, 'info:', info);
+      if (!isProduction) {
+        console.log('[Auth Callback] Result - user:', user?.email, 'info:', info);
+      }
       
       if (err) {
         console.error('[Auth Callback] Error:', err);
@@ -23,8 +26,11 @@ router.get('/google/callback',
       }
       
       if (!user) {
-        console.log('[Auth Callback] No user returned, info:', info);
-        return res.redirect('/login.html?error=no_user');
+        // Log domain restriction failures
+        if (info?.message?.includes('adaptive.co.uk')) {
+          console.log('[Auth Callback] Domain restriction - rejected email');
+        }
+        return res.redirect('/login.html?error=access_denied');
       }
       
       req.logIn(user, (loginErr) => {
@@ -33,15 +39,12 @@ router.get('/google/callback',
           return res.redirect('/login.html?error=login_error');
         }
         
-        console.log('[Auth Callback] Login successful, session:', req.sessionID, 'user:', req.user?.email);
-        console.log('[Auth Callback] isAuthenticated:', req.isAuthenticated());
-        
         // Save session explicitly before redirect
         req.session.save((saveErr) => {
           if (saveErr) {
             console.error('[Auth Callback] Session save error:', saveErr);
+            return res.redirect('/login.html?error=session_error');
           }
-          console.log('[Auth Callback] Session saved, redirecting to /');
           res.redirect('/');
         });
       });

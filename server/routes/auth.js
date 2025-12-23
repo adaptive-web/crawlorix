@@ -12,8 +12,8 @@ router.get('/google',
   })
 );
 
-// Google OAuth callback
-router.get('/google/callback',
+// Google OAuth callback - route matches /api/auth/callback/google
+router.get('/callback/google',
   passport.authenticate('google', {
     failureRedirect: '/login.html?error=access_denied',
     session: false

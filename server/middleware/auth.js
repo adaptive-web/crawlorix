@@ -4,20 +4,31 @@ import { verifyToken, clearAuthCookie } from '../lib/jwt.js';
 export function requireAuth(req, res, next) {
   const token = req.cookies?.auth_token;
   
+  // Check if this is an API request or a page request
+  const isApiRequest = req.path.startsWith('/api/') || 
+                       req.xhr || 
+                       req.headers.accept?.includes('application/json');
+  
   if (!token) {
-    return res.status(401).json({
-      error: 'Unauthorized - Please sign in with your @adaptive.co.uk Google account',
-      requiresAuth: true
-    });
+    if (isApiRequest) {
+      return res.status(401).json({
+        error: 'Unauthorized - Please sign in with your @adaptive.co.uk Google account',
+        requiresAuth: true
+      });
+    }
+    return res.redirect('/login.html');
   }
 
   const user = verifyToken(token);
   if (!user) {
     clearAuthCookie(res);
-    return res.status(401).json({
-      error: 'Invalid or expired token - Please sign in again',
-      requiresAuth: true
-    });
+    if (isApiRequest) {
+      return res.status(401).json({
+        error: 'Invalid or expired token - Please sign in again',
+        requiresAuth: true
+      });
+    }
+    return res.redirect('/login.html');
   }
 
   // Verify user has @adaptive.co.uk email

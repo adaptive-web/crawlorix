@@ -11,6 +11,7 @@ import augmentorRouter from './routes/augmentor.js';
 import authRouter from './routes/auth.js';
 import { configurePassport } from './config/passport.js';
 import { startScheduler } from './workers/scheduler.js';
+import { requireAuth } from './middleware/auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -59,11 +60,11 @@ app.use((req, res, next) => {
 // Authentication Routes
 app.use('/auth', authRouter);
 
-// API Routes
-app.use('/api/instances', instancesRouter);
-app.use('/api/jobs', jobsRouter);
-app.use('/api/query', queryRouter);
-app.use('/api/augmentor', augmentorRouter);
+// API Routes (protected by auth)
+app.use('/api/instances', requireAuth, instancesRouter);
+app.use('/api/jobs', requireAuth, jobsRouter);
+app.use('/api/query', requireAuth, queryRouter);
+app.use('/api/augmentor', requireAuth, augmentorRouter);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -207,6 +208,22 @@ app.all('/api/admin/fix-gemini-models', async (req, res) => {
 // Serve static files from Vite build (for production)
 if (process.env.NODE_ENV === 'production') {
   const distPath = join(__dirname, '..', 'dist');
+  
+  // Protect all routes except auth and health
+  app.use((req, res, next) => {
+    // Skip auth for auth routes, health check, and static assets
+    if (req.path.startsWith('/auth') || 
+        req.path === '/health' || 
+        req.path.startsWith('/assets/') ||
+        req.path.endsWith('.js') ||
+        req.path.endsWith('.css') ||
+        req.path.endsWith('.ico')) {
+      return next();
+    }
+    // Require auth for everything else
+    requireAuth(req, res, next);
+  });
+  
   app.use(express.static(distPath));
 
   app.get('*', (req, res) => {

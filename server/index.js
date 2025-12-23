@@ -214,12 +214,13 @@ if (process.env.NODE_ENV === 'production') {
   // Serve public folder (login page) without auth
   app.use(express.static(publicPath));
   
-  // Protect all routes except auth, health, and login
+  // Protect all routes except auth, health, login, and no-access
   app.use((req, res, next) => {
-    // Skip auth for auth routes, health check, login, and static assets
+    // Skip auth for auth routes, health check, login, no-access, and static assets
     if (req.path.startsWith('/auth') || 
         req.path === '/health' || 
         req.path === '/login.html' ||
+        req.path === '/no-access.html' ||
         req.path.startsWith('/assets/') ||
         req.path.endsWith('.js') ||
         req.path.endsWith('.css') ||

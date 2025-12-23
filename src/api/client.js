@@ -3,18 +3,11 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL ||
   (window.location.hostname === 'localhost' ? 'http://localhost:3000/api' : `${window.location.origin}/api`);
 
-// Get auth token from Base44 authentication
-function getAuthToken() {
-  // Base44 stores the token with this key
-  return localStorage.getItem('base44_access_token') || 'placeholder-token';
-}
-
 async function apiRequest(endpoint, options = {}) {
   try {
     const url = `${API_BASE_URL}${endpoint}`;
     const headers = {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${getAuthToken()}`,
       ...options.headers,
     };
 
@@ -23,6 +16,7 @@ async function apiRequest(endpoint, options = {}) {
     const response = await fetch(url, {
       ...options,
       headers,
+      credentials: 'include', // Send session cookies
     });
 
     const data = await response.json();

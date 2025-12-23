@@ -267,9 +267,9 @@ export default function Dashboard() {
         const response = await fetch(`${window.location.origin}/api/augmentor/dry-run`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('base44_access_token') || 'placeholder-token'}`
+            'Content-Type': 'application/json'
           },
+          credentials: 'include',
           body: JSON.stringify({ instance_id: instance.id })
         });
 
@@ -308,9 +308,9 @@ export default function Dashboard() {
         const response = await fetch(`${window.location.origin}/api/augmentor/content-analysis`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('base44_access_token') || 'placeholder-token'}`
+            'Content-Type': 'application/json'
           },
+          credentials: 'include',
           body: JSON.stringify({ instance_id: instance.id })
         });
 
@@ -344,9 +344,9 @@ export default function Dashboard() {
         const response = await fetch(`${window.location.origin}/api/augmentor/start`, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('base44_access_token') || 'placeholder-token'}`
+            'Content-Type': 'application/json'
           },
+          credentials: 'include',
           body: JSON.stringify({ instance_id: instance.id })
         });
 

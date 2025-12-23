@@ -191,9 +191,9 @@ export default function QueryRunner() {
             const response = await fetch(`${window.location.origin}/api/query`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('base44_access_token') || 'placeholder-token'}`
+                    'Content-Type': 'application/json'
                 },
+                credentials: 'include',
                 body: JSON.stringify({
                     instance_id: instance.id,
                     search_term: searchTerm
